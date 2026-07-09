@@ -56,7 +56,13 @@ export default function AdminPage({ data, onUpdate, onLogout }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const getQRValue = (gdrivePath) => `https://drive.google.com/file/d/${gdrivePath}/view`
+  const extractFileId = (input) => {
+    if (!input) return input
+    const match = input.match(/\/d\/([a-zA-Z0-9_-]+)/)
+    return match ? match[1] : input
+  }
+
+  const getQRValue = (gdrivePath) => `https://drive.google.com/file/d/${extractFileId(gdrivePath)}/view`
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -140,12 +146,16 @@ export default function AdminPage({ data, onUpdate, onLogout }) {
                   <input
                     type="text"
                     value={form.gdrivePath}
-                    onChange={(e) => setForm({ ...form, gdrivePath: e.target.value })}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      const match = raw.match(/\/d\/([a-zA-Z0-9_-]+)/)
+                      setForm({ ...form, gdrivePath: match ? match[1] : raw })
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none font-mono text-sm"
                     placeholder="e.g. 1ABC123DEF456"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    From URL: https://drive.google.com/file/d/<strong>FILE_ID</strong>/view
+                    Paste the File ID or full Google Drive URL — auto-extracted
                   </p>
                 </div>
                 <div>
@@ -235,9 +245,9 @@ export default function AdminPage({ data, onUpdate, onLogout }) {
                       </td>
                       <td className="px-4 py-3">
                         <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
-                          {sop.gdrivePath.length > 20
-                            ? sop.gdrivePath.slice(0, 20) + '...'
-                            : sop.gdrivePath}
+                          {extractFileId(sop.gdrivePath).length > 20
+                            ? extractFileId(sop.gdrivePath).slice(0, 20) + '...'
+                            : extractFileId(sop.gdrivePath)}
                         </code>
                       </td>
                       <td className="px-4 py-3">

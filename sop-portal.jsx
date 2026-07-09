@@ -55,12 +55,19 @@ function loadSOPData() {
   return DEFAULT_SOP_DATA
 }
 
+function extractFileId(input) {
+  if (!input) return input
+  // If it's a full Google Drive URL, extract the File ID
+  const match = input.match(/\/d\/([a-zA-Z0-9_-]+)/)
+  return match ? match[1] : input
+}
+
 function getGDriveUrl(fileId) {
-  return `https://drive.google.com/file/d/${fileId}/view`
+  return `https://drive.google.com/file/d/${extractFileId(fileId)}/view`
 }
 
 function getGDriveDownload(fileId) {
-  return `https://drive.google.com/uc?export=download&id=${fileId}`
+  return `https://drive.google.com/uc?export=download&id=${extractFileId(fileId)}`
 }
 
 function QRCard({ label, url, sub }) {
@@ -167,7 +174,7 @@ function PDFViewer({ sop, onClose }) {
 
         <div className="flex-1 bg-gray-100 min-h-[60vh]">
           <iframe
-            src={`https://docs.google.com/viewer?url=${encodeURIComponent(`https://drive.google.com/uc?export=download&id=${sop.gdrivePath}`)}&embedded=true`}
+            src={`https://docs.google.com/viewer?url=${encodeURIComponent(`https://drive.google.com/uc?export=download&id=${extractFileId(sop.gdrivePath)}`)}&embedded=true`}
             className="w-full h-full border-none min-h-[60vh]"
             title={sop.title}
           />
