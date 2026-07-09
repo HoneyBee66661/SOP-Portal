@@ -1,63 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText } from 'lucide-react'
+import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText, Loader } from 'lucide-react'
 
-const DEFAULT_SOP_DATA = [
-  {
-    id: 1,
-    title: 'Receiving Procedure',
-    category: 'Receiving',
-    gdrivePath: '1ABC123DEF456',
-    description: 'Step-by-step guide for incoming goods inspection',
-  },
-  {
-    id: 2,
-    title: 'Storage & Binning',
-    category: 'Warehouse',
-    gdrivePath: '2GHI789JKL012',
-    description: 'Proper placement and organization of materials',
-  },
-  {
-    id: 3,
-    title: 'Picking & Packing',
-    category: 'Warehouse',
-    gdrivePath: '3MNO345PQR678',
-    description: 'Efficient order fulfillment process',
-  },
-  {
-    id: 4,
-    title: 'Shipping Documentation',
-    category: 'Shipping',
-    gdrivePath: '4STU901VWX234',
-    description: 'Required docs and labeling standards',
-  },
-  {
-    id: 5,
-    title: 'Inventory Audit',
-    category: 'Inventory',
-    gdrivePath: '5YZA567BCD890',
-    description: 'Quarterly physical count procedures',
-  },
-  {
-    id: 6,
-    title: 'Safety & PPE',
-    category: 'Safety',
-    gdrivePath: '6EFG123HIJ456',
-    description: 'Required protective equipment and protocols',
-  },
-]
-
-function loadSOPData() {
-  const stored = localStorage.getItem('sop-portal-data')
-  if (stored) {
-    try { return JSON.parse(stored) } catch { /* ignore */ }
-  }
-  return DEFAULT_SOP_DATA
-}
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQoaVGsNxKVjsjo1bWN-Yz6_ZSFFiqQYcME9zPwhUadOVjVTPwDRJIkLcTPbA_x-4Sm8W6zkQmLvBnk/pub?output=csv'
 
 function extractFileId(input) {
   if (!input) return input
-  // If it's a full Google Drive URL, extract the File ID
   const match = input.match(/\/d\/([a-zA-Z0-9_-]+)/)
   return match ? match[1] : input
 }
@@ -68,6 +16,40 @@ function getGDriveUrl(fileId) {
 
 function getGDriveDownload(fileId) {
   return `https://drive.google.com/uc?export=download&id=${extractFileId(fileId)}`
+}
+
+async function fetchSOPs() {
+  // Try fetching from Google Sheets
+  try {
+    const res = await fetch(SHEET_CSV_URL)
+    const csv = await res.text()
+    const lines = csv.trim().split('\n')
+    if (lines.length < 2) return []
+
+    const headers = lines[0].split(',').map(h => h.trim())
+    const items = []
+
+    for (let i = 1; i < lines.length; i++) {
+      const vals = lines[i].split(',').map(v => v.trim())
+      const entry = {}
+      headers.forEach((h, idx) => { entry[h] = vals[idx] || '' })
+      if (entry.id) {
+        entry.id = parseInt(entry.id, 10)
+        items.push(entry)
+      }
+    }
+
+    // Cache in localStorage
+    localStorage.setItem('sop-portal-cache', JSON.stringify(items))
+    return items
+  } catch (e) {
+    // Fallback to cache
+    const cached = localStorage.getItem('sop-portal-cache')
+    if (cached) {
+      try { return JSON.parse(cached) } catch {}
+    }
+    return []
+  }
 }
 
 function QRCard({ label, url, sub }) {
@@ -180,7 +162,7 @@ function PDFViewer({ sop, onClose }) {
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
           <a
             href={getGDriveUrl(sop.gdrivePath)}
             target="_blank"
@@ -205,24 +187,18 @@ function PDFViewer({ sop, onClose }) {
 function SOPCard({ sop, onView, onShare }) {
   return (
     <div className="group bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:border-indigo-100 transition-all duration-200 flex flex-col">
-      {/* Colored top accent */}
       <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-t-xl" />
 
       <div className="p-5 flex flex-col flex-1">
-        {/* Category badge */}
         <div className="mb-3">
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
             {sop.category}
           </span>
         </div>
 
-        {/* Title */}
         <h3 className="font-bold text-gray-800 text-lg leading-tight mb-1.5">{sop.title}</h3>
-
-        {/* Description */}
         <p className="text-sm text-gray-500 leading-relaxed mb-5 flex-1">{sop.description}</p>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
           <button
             onClick={() => onView(sop)}
@@ -254,11 +230,19 @@ function SOPCard({ sop, onView, onShare }) {
 }
 
 export default function SOPPortal() {
-  const [sopData] = useState(loadSOPData)
+  const [sopData, setSopData] = useState([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedSOP, setSelectedSOP] = useState(null)
   const [shareSOP, setShareSOP] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState('all')
+
+  useEffect(() => {
+    fetchSOPs().then(data => {
+      setSopData(data)
+      setLoading(false)
+    })
+  }, [])
 
   const categories = ['all', ...new Set(sopData.map(s => s.category))]
 
@@ -270,13 +254,24 @@ export default function SOPPortal() {
     )
   })
 
-  const portalUrl = window.location.origin + window.location.pathname
-  const adminUrl = portalUrl.replace(/\/?$/, '/admin')
+  const portalUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''
+  const adminUrl = portalUrl + 'admin'
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-indigo-50/40 flex items-center justify-center">
+        <div className="text-center">
+          <Loader size={32} className="animate-spin text-indigo-600 mx-auto mb-3" />
+          <p className="text-gray-500">Loading SOPs...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-indigo-50/40">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-semibold mb-4">
             <Shield size={12} />
@@ -290,25 +285,16 @@ export default function SOPPortal() {
           </p>
         </div>
 
-        {/* ── QR Codes ── */}
+        {/* QR Codes */}
         <div className="max-w-2xl mx-auto mb-10">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <QRCard
-              label="Portal Access"
-              url={portalUrl}
-              sub="Scan to open SOP Portal"
-            />
-            <QRCard
-              label="Admin Panel"
-              url={adminUrl}
-              sub="Scan to manage SOPs"
-            />
+            <QRCard label="Portal Access" url={portalUrl} sub="Scan to open SOP Portal" />
+            <QRCard label="Admin Panel" url={adminUrl} sub="Scan to manage SOPs" />
           </div>
         </div>
 
-        {/* ── Search & Filter ── */}
+        {/* Search & Filter */}
         <div className="max-w-2xl mx-auto mb-8 space-y-4">
-          {/* Search */}
           <div className="relative">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -320,7 +306,6 @@ export default function SOPPortal() {
             />
           </div>
 
-          {/* Category filters */}
           <div className="flex flex-wrap gap-2">
             {categories.map(cat => (
               <button
@@ -338,16 +323,11 @@ export default function SOPPortal() {
           </div>
         </div>
 
-        {/* ── Grid ── */}
+        {/* Grid */}
         {filtered.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map(sop => (
-              <SOPCard
-                key={sop.id}
-                sop={sop}
-                onView={setSelectedSOP}
-                onShare={setShareSOP}
-              />
+              <SOPCard key={sop.id} sop={sop} onView={setSelectedSOP} onShare={setShareSOP} />
             ))}
           </div>
         ) : (
@@ -360,7 +340,7 @@ export default function SOPPortal() {
           </div>
         )}
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="mt-16 pt-8 border-t border-gray-200 text-center">
           <p className="text-gray-400 text-sm mb-3">
             Scan a QR code with your phone to access instantly
@@ -375,13 +355,9 @@ export default function SOPPortal() {
         </div>
       </div>
 
-      {/* ── Modals ── */}
-      {selectedSOP && (
-        <PDFViewer sop={selectedSOP} onClose={() => setSelectedSOP(null)} />
-      )}
-      {shareSOP && (
-        <ShareModal sop={shareSOP} onClose={() => setShareSOP(null)} />
-      )}
+      {/* Modals */}
+      {selectedSOP && <PDFViewer sop={selectedSOP} onClose={() => setSelectedSOP(null)} />}
+      {shareSOP && <ShareModal sop={shareSOP} onClose={() => setShareSOP(null)} />}
     </div>
   )
 }
