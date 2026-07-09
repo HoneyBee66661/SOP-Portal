@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Shield, LogOut, ExternalLink, RefreshCw, Loader } from 'lucide-react'
+import { Shield, LogOut, ExternalLink, RefreshCw, Loader, Upload } from 'lucide-react'
 
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQoaVGsNxKVjsjo1bWN-Yz6_ZSFFiqQYcME9zPwhUadOVjVTPwDRJIkLcTPbA_x-4Sm8W6zkQmLvBnk/pub?output=csv'
 const SHEET_EDIT_URL = 'https://docs.google.com/spreadsheets/d/1c_qGvb1jpfL5SZFeuRxKsQO4ddyPJlSFObsyFG4wItc/edit'
@@ -90,6 +90,15 @@ export default function AdminPage({ onLogout }) {
               Refresh
             </button>
             <a
+              href="https://drive.google.com/drive/folders/1QAkME-XJDi9ITXzqYlFeGfAWbEXWSadO"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition text-sm font-medium"
+            >
+              <Upload size={16} />
+              Upload PDF
+            </a>
+            <a
               href={SHEET_EDIT_URL}
               target="_blank"
               rel="noopener noreferrer"
@@ -118,8 +127,9 @@ export default function AdminPage({ onLogout }) {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
           <p className="font-medium mb-1">Cara mengelola SOP:</p>
           <ol className="list-decimal list-inside space-y-1 text-amber-700">
+            <li>Klik <strong>"Upload PDF"</strong> untuk upload file PDF ke Google Drive folder</li>
             <li>Klik <strong>"Edit in Google Sheets"</strong> untuk membuka spreadsheet</li>
-            <li>Tambah, ubah, atau hapus baris (id, title, category, gdrivePath, description)</li>
+            <li>Copy File ID dari URL Google Drive, paste ke kolom <strong>gdrivePath</strong> di sheet</li>
             <li>Klik <strong>"Refresh"</strong> di sini untuk menarik perubahan terbaru</li>
             <li>Portal di <strong>/</strong> otomatis mengambil data terbaru setiap kali dibuka</li>
           </ol>
