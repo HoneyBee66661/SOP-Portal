@@ -5,6 +5,7 @@
   "private": true,
   "dependencies": {
     "lucide-react": "^0.408.0",
+    "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

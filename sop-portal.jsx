@@ -167,7 +167,7 @@ function PDFViewer({ sop, onClose }) {
 
         <div className="flex-1 bg-gray-100 min-h-[60vh]">
           <iframe
-            src={`https://drive.google.com/file/d/${sop.gdrivePath}/preview`}
+            src={`https://docs.google.com/viewer?url=${encodeURIComponent(`https://drive.google.com/uc?export=download&id=${sop.gdrivePath}`)}&embedded=true`}
             className="w-full h-full border-none min-h-[60vh]"
             title={sop.title}
           />

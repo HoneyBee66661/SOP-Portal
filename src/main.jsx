@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import SOPPortal from '../sop-portal.jsx'
 import AdminLogin from './AdminLogin.jsx'
 import AdminPage from './AdminPage.jsx'
+import QRPrintPage from './QRPrintPage.jsx'
 
 const DEFAULT_SOP_DATA = [
   {
@@ -90,6 +91,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/" element={<SOPPortal />} />
         <Route path="/admin" element={<AdminWrapper />} />
+        <Route path="/print/qr-codes" element={<QRPrintPage />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,
