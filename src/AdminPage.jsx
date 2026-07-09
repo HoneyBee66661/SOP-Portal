@@ -79,7 +79,7 @@ export default function AdminPage({ onLogout }) {
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pt-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Admin Panel</h1>
-            <p className="text-gray-600 text-sm">Data is synced from Google Sheets</p>
+            <p className="text-gray-600 text-sm">Data tersinkron dari Google Sheets</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -116,12 +116,12 @@ export default function AdminPage({ onLogout }) {
 
         {/* Info card */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
-          <p className="font-medium mb-1">How to manage SOPs:</p>
+          <p className="font-medium mb-1">Cara mengelola SOP:</p>
           <ol className="list-decimal list-inside space-y-1 text-amber-700">
-            <li>Click <strong>"Edit in Google Sheets"</strong> to open the spreadsheet</li>
-            <li>Add, edit, or delete rows (id, title, category, gdrivePath, description)</li>
-            <li>Click <strong>"Refresh"</strong> here to pull the latest changes</li>
-            <li>The portal at <strong>/</strong> auto-fetches fresh data every time</li>
+            <li>Klik <strong>"Edit in Google Sheets"</strong> untuk membuka spreadsheet</li>
+            <li>Tambah, ubah, atau hapus baris (id, title, category, gdrivePath, description)</li>
+            <li>Klik <strong>"Refresh"</strong> di sini untuk menarik perubahan terbaru</li>
+            <li>Portal di <strong>/</strong> otomatis mengambil data terbaru setiap kali dibuka</li>
           </ol>
         </div>
 
@@ -142,7 +142,7 @@ export default function AdminPage({ onLogout }) {
                 {sops.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="text-center py-12 text-gray-500">
-                      No SOPs found in the sheet. Add some entries.
+                      Belum ada SOP di sheet. Tambahkan entri baru.
                     </td>
                   </tr>
                 ) : (
@@ -178,7 +178,7 @@ export default function AdminPage({ onLogout }) {
 
         {/* Stats */}
         <div className="mt-4 text-sm text-gray-500 text-center">
-          {sops.length} SOP{sops.length !== 1 ? 's' : ''} total
+          Total: {sops.length} SOP
         </div>
       </div>
     </div>
