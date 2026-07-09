@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import QRCode from 'qrcode.react'
+import { QRCodeSVG } from 'qrcode.react'
 import { Plus, Edit3, Trash2, Copy, Check, LogOut, X } from 'lucide-react'
 
 const EMPTY_FORM = { title: '', category: '', gdrivePath: '', description: '' }
@@ -241,7 +241,7 @@ export default function AdminPage({ data, onUpdate, onLogout }) {
                         </code>
                       </td>
                       <td className="px-4 py-3">
-                        <QRCode value={getQRValue(sop.gdrivePath)} size={40} level="H" />
+                        <QRCodeSVG value={getQRValue(sop.gdrivePath)} size={40} level="H" />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex gap-1 justify-end">

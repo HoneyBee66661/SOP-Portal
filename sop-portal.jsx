@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import QRCode from 'qrcode.react'
+import { QRCodeSVG } from 'qrcode.react'
 import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText } from 'lucide-react'
 
 const DEFAULT_SOP_DATA = [
@@ -75,7 +75,7 @@ function QRCard({ label, url, sub }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
       <div className="bg-gray-50 rounded-lg p-2 flex-shrink-0">
-        <QRCode value={url} size={72} level="M" fgColor="#4f46e5" bgColor="#f9fafb" />
+        <QRCodeSVG value={url} size={72} level="M" fgColor="#4f46e5" bgColor="#f9fafb" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="font-semibold text-gray-800 text-sm">{label}</p>
