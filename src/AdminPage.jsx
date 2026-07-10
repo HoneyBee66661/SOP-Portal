@@ -15,6 +15,7 @@ export default function AdminPage({ onLogout }) {
   const [dragIdx, setDragIdx] = useState(null)
   const [deletingIds, setDeletingIds] = useState([])
   const [updatingId, setUpdatingId] = useState(null)
+  const updatingIdRef = useRef(null)
   const updateInputRef = useRef(null)
 
   const loadData = useCallback(async (silent) => {
@@ -93,6 +94,7 @@ export default function AdminPage({ onLogout }) {
 
   const handleUpdateClick = (sop) => {
     setUpdatingId(sop.gdrivePath)
+    updatingIdRef.current = sop.gdrivePath
     updateInputRef.current?.click()
   }
 
@@ -103,12 +105,14 @@ export default function AdminPage({ onLogout }) {
       setUploadMsg({ type: 'error', text: `"${file.name}" bukan file PDF` })
       setTimeout(() => setUploadMsg(null), 4000)
       setUpdatingId(null)
+      updatingIdRef.current = null
       if (updateInputRef.current) updateInputRef.current.value = ''
       return
     }
 
     const base64 = await readFileAsBase64(file)
     setUpdatingId(null)
+    updatingIdRef.current = null
     if (updateInputRef.current) updateInputRef.current.value = ''
 
     await postViaIframe(SYNC_URL, {
@@ -407,6 +411,13 @@ export default function AdminPage({ onLogout }) {
           type="file"
           accept=".pdf"
           onChange={handleUpdateFile}
+          onBlur={() => {
+            if (updatingIdRef.current && !updateInputRef.current?.files?.length) {
+              updatingIdRef.current = null
+              setUpdatingId(null)
+              if (updateInputRef.current) updateInputRef.current.value = ''
+            }
+          }}
           className="hidden"
         />
 
