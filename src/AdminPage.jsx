@@ -220,6 +220,7 @@ export default function AdminPage({ onLogout }) {
       {showUploadModal && (
         <UploadModal
           syncUrl={SYNC_URL}
+          csvUrl={SHEET_CSV_URL}
           onClose={() => setShowUploadModal(false)}
           onUploadComplete={handleUploadComplete}
         />

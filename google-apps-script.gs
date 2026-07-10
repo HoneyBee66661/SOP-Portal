@@ -88,7 +88,7 @@ function syncFromDrive_(ss) {
   const folder = DriveApp.getFolderById(UPLOAD_FOLDER_ID)
   const files = folder.getFiles()
   const sheet = ss.getSheetByName(SHEET_NAME)
-  if (!sheet) return
+  if (!sheet) throw new Error('Sheet not found: ' + SHEET_NAME)
 
   const existing = getExistingData(sheet)
   const newRows = []

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { Upload, X, Check, AlertCircle, Loader, FileText } from 'lucide-react'
 
 const MAX_SIZE = 30 * 1024 * 1024 // 30MB
+const CSV_CACHE_BUST = '?cache=' + Date.now()
 
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
@@ -12,12 +13,94 @@ function readFileAsBase64(file) {
   })
 }
 
-export default function UploadModal({ syncUrl, onClose, onUploadComplete }) {
+function postViaIframe(url, params) {
+  return new Promise((resolve, reject) => {
+    const iframeName = 'upload-frame-' + Date.now()
+    const iframe = document.createElement('iframe')
+    iframe.name = iframeName
+    iframe.style.display = 'none'
+    document.body.appendChild(iframe)
+
+    const form = document.createElement('form')
+    form.method = 'POST'
+    form.action = url
+    form.target = iframeName
+
+    for (const [key, val] of Object.entries(params)) {
+      const input = document.createElement('input')
+      input.type = 'hidden'
+      input.name = key
+      input.value = val
+      form.appendChild(input)
+    }
+
+    document.body.appendChild(form)
+
+    let settled = false
+
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        cleanup()
+        reject(new Error('Waktu habis. Coba lagi.'))
+      }
+    }, 60000)
+
+    const cleanup = () => {
+      clearTimeout(timeout)
+      if (form.parentNode) form.parentNode.removeChild(form)
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+    }
+
+    iframe.onload = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow.document
+        const text = doc.body ? doc.body.textContent || doc.body.innerText : ''
+        if (text) {
+          const result = JSON.parse(text)
+          if (result.success) resolve(result)
+          else reject(new Error(result.error || 'Upload gagal'))
+        } else {
+          // Empty body is expected — Apps Script redirects POST → GET
+          // Verification happens in handleUpload via doGet + CSV check
+          resolve({ submitted: true })
+        }
+      } catch (e) {
+        // Unparseable response — likely the GET redirect. Resolve optimistically;
+        // handleUpload will verify by checking CSV data after sync.
+        resolve({ submitted: true })
+      }
+    }
+
+    form.submit()
+  })
+}
+
+// Fetch CSV from published Sheet and check if a title exists
+async function verifyUploadInSheet(csvUrl, titleName) {
+  const res = await fetch(csvUrl + CSV_CACHE_BUST)
+  const csv = await res.text()
+  const lines = csv.trim().split('\n')
+  // Skip header row (index 0), check title column (index 1)
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',')
+    if (cols.length >= 2) {
+      const title = cols[1].trim().replace(/^"|"$/g, '')
+      if (title === titleName) return true
+    }
+  }
+  return false
+}
+
+export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete }) {
   const [file, setFile] = useState(null)
   const [status, setStatus] = useState('idle') // idle | reading | uploading | syncing | success | error
   const [error, setError] = useState(null)
   const inputRef = useRef(null)
-  const abortRef = useRef(null)
 
   const reset = () => {
     setFile(null)
@@ -49,46 +132,47 @@ export default function UploadModal({ syncUrl, onClose, onUploadComplete }) {
   const handleUpload = async () => {
     if (!file) return
 
+    const titleName = file.name.replace(/\.pdf$/i, '')
     setStatus('reading')
     setError(null)
 
     try {
       const base64 = await readFileAsBase64(file)
-
       setStatus('uploading')
 
-      const controller = new AbortController()
-      abortRef.current = controller
-      const timeout = setTimeout(() => controller.abort(), 120000)
-
-      const body = new URLSearchParams()
-      body.append('fileName', file.name)
-      body.append('fileData', base64)
-
-      const res = await fetch(syncUrl, {
-        method: 'POST',
-        body,
-        signal: controller.signal,
+      // Use iframe to post — avoids CORS issues with Apps Script
+      await postViaIframe(syncUrl, {
+        fileName: file.name,
+        fileData: base64,
       })
 
-      clearTimeout(timeout)
-      const result = await res.json()
+      // Wait for server to process the upload
+      setStatus('syncing')
+      await new Promise(r => setTimeout(r, 4000))
 
-      if (!result.success) {
-        throw new Error(result.error || 'Upload gagal')
+      // Trigger Drive → Sheet sync via doGet
+      const syncRes = await fetch(syncUrl)
+      const syncData = await syncRes.json()
+      if (!syncData.success) {
+        throw new Error(syncData.error || 'Sinkronisasi gagal')
       }
 
-      setStatus('syncing')
+      // Verify the uploaded file actually appears in the sheet
+      const found = csvUrl && await verifyUploadInSheet(csvUrl, titleName)
+      if (!found) {
+        throw new Error(
+          'File tidak ditemukan di spreadsheet setelah upload. ' +
+          'Pastikan Apps Script sudah di-redeploy dengan doPost().'
+        )
+      }
+
+      // Refresh parent data
       if (onUploadComplete) await onUploadComplete()
 
       setStatus('success')
       setTimeout(() => onClose(), 2500)
     } catch (err) {
-      if (err.name === 'AbortError') {
-        setError('Waktu habis. Coba lagi.')
-      } else {
-        setError(err.message || 'Upload gagal')
-      }
+      setError(err.message || 'Upload gagal. Pastikan Apps Script sudah di-redeploy dengan doPost().')
       setStatus('error')
     }
   }
