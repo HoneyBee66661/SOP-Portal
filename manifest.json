@@ -1,7 +1,7 @@
 {
-  "name": "SOP Portal",
-  "short_name": "SOPs",
-  "description": "Easy access to Standard Operating Procedures",
+  "name": "Document Portal",
+  "short_name": "Documents",
+  "description": "Easy access to company documents and procedures",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

@@ -1,4 +1,4 @@
-# SOP Portal - Complete Setup Guide
+# Document Portal - Complete Setup Guide
 
 ## Overview
 
@@ -25,7 +25,7 @@ sop-portal-complete/
 ├── src/
 │   ├── main.jsx           # React app entry point
 │   └── index.css          # Global styles
-├── sop-portal.jsx         # Main component (EDIT THIS)
+├── document-portal.jsx         # Main component (EDIT THIS)
 └── SETUP-GUIDE.md         # This file
 ```
 
@@ -68,7 +68,7 @@ Picking & Packing      | 3MNO345PQR678
 
 ## Step 2: Configure Your SOPs
 
-### 2.1 Open `sop-portal.jsx`
+### 2.1 Open `document-portal.jsx`
 Find the `sopData` array (around line 15):
 
 ```javascript
@@ -308,7 +308,7 @@ Email: "You can now access all SOPs here: https://sop-portal-abc123.vercel.app"
 5. Deploy (redeploy to Vercel/GitHub Pages)
 
 ### Customize Appearance
-- Change colors: Edit color classes in `sop-portal.jsx`
+- Change colors: Edit color classes in `document-portal.jsx`
   - `bg-indigo-600` → Your brand color
   - `text-gray-800` → Text color
 - Add logo: Add `<img>` tag after the title
@@ -351,7 +351,7 @@ Email: "You can now access all SOPs here: https://sop-portal-abc123.vercel.app"
 ## Next Steps
 
 1. ✅ Gather File IDs (10 min)
-2. ✅ Edit `sop-portal.jsx` (5 min)
+2. ✅ Edit `document-portal.jsx` (5 min)
 3. ✅ Test locally with `npm run dev` (2 min)
 4. ✅ Build with `npm run build` (1 min)
 5. ✅ Deploy to Vercel (5 min)

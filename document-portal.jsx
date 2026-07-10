@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText, Loader } from 'lucide-react'
 
@@ -40,11 +40,11 @@ async function fetchSOPs() {
     }
 
     // Cache in localStorage
-    localStorage.setItem('sop-portal-cache', JSON.stringify(items))
+    localStorage.setItem('document-portal-cache', JSON.stringify(items))
     return items
   } catch (e) {
     // Fallback to cache
-    const cached = localStorage.getItem('sop-portal-cache')
+    const cached = localStorage.getItem('document-portal-cache')
     if (cached) {
       try { return JSON.parse(cached) } catch {}
     }
@@ -52,8 +52,9 @@ async function fetchSOPs() {
   }
 }
 
-function QRCard({ label, url, sub }) {
+function PortalQRCard({ label, url, sub }) {
   const [copied, setCopied] = useState(false)
+  const svgRef = useRef(null)
 
   const handleCopy = () => {
     navigator.clipboard.writeText(url)
@@ -61,23 +62,71 @@ function QRCard({ label, url, sub }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({ title: label, text: sub, url })
+    }
+  }
+
+  const downloadQRPNG = () => {
+    const svg = svgRef.current?.querySelector('svg')
+    if (!svg) return
+
+    const svgData = new XMLSerializer().serializeToString(svg)
+    const canvas = document.createElement('canvas')
+    canvas.width = 1200
+    canvas.height = 1200
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    const img = new Image()
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+    const blobUrl = URL.createObjectURL(blob)
+
+    img.onload = () => {
+      ctx.drawImage(img, 50, 50, 1100, 1100)
+      URL.revokeObjectURL(blobUrl)
+      const link = document.createElement('a')
+      link.download = 'document-portal-qr.png'
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    }
+    img.src = blobUrl
+  }
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
-      <div className="bg-gray-50 rounded-lg p-2 flex-shrink-0">
-        <QRCodeSVG value={url} size={72} level="M" fgColor="#4f46e5" bgColor="#f9fafb" />
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-center gap-4 mb-3">
+        <div className="bg-gray-50 rounded-lg p-2 flex-shrink-0" ref={svgRef}>
+          <QRCodeSVG value={url} size={72} level="H" fgColor="#4f46e5" bgColor="#f9fafb" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-gray-800 text-sm">{label}</p>
+          {sub && <p className="text-xs text-gray-500 mt-0.5 truncate">{sub}</p>}
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-gray-800 text-sm">{label}</p>
-        {sub && <p className="text-xs text-gray-500 mt-0.5 truncate">{sub}</p>}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-3">
+          <button
+            onClick={handleCopy}
+            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition"
+          >
+            {copied ? <><Check size={14} className="text-green-600" /> Copied</> : <><Link size={14} /> Copy</>}
+          </button>
+          <button
+            onClick={handleShare}
+            className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-indigo-600 transition"
+          >
+            <Share2 size={14} /> Share
+          </button>
+        </div>
         <button
-          onClick={handleCopy}
-          className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition"
+          onClick={downloadQRPNG}
+          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition"
+          title="Download QR Code as PNG (printable)"
         >
-          {copied ? (
-            <><Check size={14} className="text-green-600" /> Copied</>
-          ) : (
-            <><Link size={14} /> Copy URL</>
-          )}
+          <Download size={14} /> QR PNG
         </button>
       </div>
     </div>
@@ -104,7 +153,7 @@ function ShareModal({ sop, onClose }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-lg text-gray-800">Share SOP</h3>
+          <h3 className="font-bold text-lg text-gray-800">Share Document</h3>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition">
             <X size={20} className="text-gray-500" />
           </button>
@@ -229,7 +278,7 @@ function SOPCard({ sop, onView, onShare }) {
   )
 }
 
-export default function SOPPortal() {
+export default function DocumentPortal() {
   const [sopData, setSopData] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -262,7 +311,7 @@ export default function SOPPortal() {
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-indigo-50/40 flex items-center justify-center">
         <div className="text-center">
           <Loader size={32} className="animate-spin text-indigo-600 mx-auto mb-3" />
-          <p className="text-gray-500">Loading SOPs...</p>
+          <p className="text-gray-500">Loading documents...</p>
         </div>
       </div>
     )
@@ -275,21 +324,32 @@ export default function SOPPortal() {
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-semibold mb-4">
             <Shield size={12} />
-            Standard Operating Procedures
+            Company Documents
           </div>
           <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight mb-3">
-            SOP Portal
+            Document Portal
           </h1>
           <p className="text-gray-500 text-base sm:text-lg max-w-md mx-auto">
-            Easy access to standard operating procedures across your organization
+            Easy access to company documents and procedures across your organization
           </p>
         </div>
 
         {/* QR Codes */}
         <div className="max-w-2xl mx-auto mb-10">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <QRCard label="Portal Access" url={portalUrl} sub="Scan to open SOP Portal" />
-            <QRCard label="Admin Panel" url={adminUrl} sub="Scan to manage SOPs" />
+            <PortalQRCard label="Portal Access" url={portalUrl} sub="Scan to open Document Portal" />
+            <a
+              href="/admin"
+              className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all flex items-center justify-between group"
+            >
+              <div>
+                <p className="font-semibold text-gray-800 text-sm">Admin Panel</p>
+                <p className="text-xs text-gray-500 mt-0.5">Manage documents and content</p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 group-hover:text-indigo-800 transition">
+                Access <ExternalLink size={14} />
+              </span>
+            </a>
           </div>
         </div>
 
@@ -299,7 +359,7 @@ export default function SOPPortal() {
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search SOPs by title or description..."
+              placeholder="Search documents by title or description..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-11 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-gray-800 placeholder:text-gray-400 transition-shadow shadow-sm"
@@ -335,7 +395,7 @@ export default function SOPPortal() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 mb-4">
               <Search size={28} className="text-gray-400" />
             </div>
-            <p className="text-gray-500 text-lg font-medium">No SOPs found</p>
+            <p className="text-gray-500 text-lg font-medium">No documents found</p>
             <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filter</p>
           </div>
         )}

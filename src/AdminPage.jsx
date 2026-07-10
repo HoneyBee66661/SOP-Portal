@@ -31,10 +31,10 @@ async function fetchSOPs() {
       }
     }
 
-    localStorage.setItem('sop-portal-cache', JSON.stringify(items))
+    localStorage.setItem('document-portal-cache', JSON.stringify(items))
     return items
   } catch (e) {
-    const cached = localStorage.getItem('sop-portal-cache')
+    const cached = localStorage.getItem('document-portal-cache')
     if (cached) {
       try { return JSON.parse(cached) } catch {}
     }

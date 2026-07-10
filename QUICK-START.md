@@ -1,4 +1,4 @@
-# SOP Portal - Quick Start (5 Minutes)
+# Document Portal - Quick Start (5 Minutes)
 
 ## TL;DR
 
@@ -6,7 +6,7 @@
 # 1. Install
 npm install
 
-# 2. Edit sop-portal.jsx with your Google Drive File IDs
+# 2. Edit document-portal.jsx with your Google Drive File IDs
 
 # 3. Test locally
 npm run dev
@@ -32,11 +32,11 @@ vercel
    https://drive.google.com/file/d/1ABC123DEF456/view
                                       ↑ This part
    ```
-4. Paste into `sop-portal.jsx` line in `sopData` array
+4. Paste into `document-portal.jsx` line in `sopData` array
 
 ---
 
-## Edit sop-portal.jsx
+## Edit document-portal.jsx
 
 Find `const sopData = [` and replace File IDs:
 
@@ -105,7 +105,7 @@ Or scan QR code. Or print SOP-specific QR codes.
 
 ## File Locations
 
-- **Edit this:** `sop-portal.jsx` (lines ~15-45, the `sopData` array)
+- **Edit this:** `document-portal.jsx` (lines ~15-45, the `sopData` array)
 - **Deploy this:** Entire folder (Vercel will handle)
 - **Don't touch:** Everything else (package.json, vite.config.js, etc.)
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import SOPPortal from '../sop-portal.jsx'
+import DocumentPortal from '../document-portal.jsx'
 import AdminLogin from './AdminLogin.jsx'
 import AdminPage from './AdminPage.jsx'
 import QRPrintPage from './QRPrintPage.jsx'
@@ -20,7 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<SOPPortal />} />
+        <Route path="/" element={<DocumentPortal />} />
         <Route path="/admin" element={<AdminWrapper />} />
         <Route path="/print/qr-codes" element={<QRPrintPage />} />
       </Routes>

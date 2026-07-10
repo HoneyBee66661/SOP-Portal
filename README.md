@@ -1,12 +1,12 @@
-# SOP Portal - Standard Operating Procedures Distribution System
+# Document Portal - Company Documents Distribution System
 
-A **free, zero-cost** web app for sharing SOPs with QR codes across your entire organization.
+A **free, zero-cost** web app for sharing company documents with QR codes across your entire organization.
 
 ## Features
 
-✅ **QR Codes** - Each SOP has a scannable QR code  
-✅ **Categorized** - Filter SOPs by category  
-✅ **Search** - Full-text search across all SOPs  
+✅ **QR Codes** - Each document has a scannable QR code  
+✅ **Categorized** - Filter documents by category  
+✅ **Search** - Full-text search across all documents  
 ✅ **Mobile-First** - Works on phones, tablets, desktops  
 ✅ **PDF Viewer** - Built-in Google Drive PDF viewer  
 ✅ **Free Hosting** - Vercel or GitHub Pages  
@@ -19,7 +19,7 @@ A **free, zero-cost** web app for sharing SOPs with QR codes across your entire 
 # 1. Install dependencies
 npm install
 
-# 2. Edit sop-portal.jsx with your Google Drive File IDs
+# 2. Edit document-portal.jsx with your Google Drive File IDs
 # (See QUICK-START.md for detailed instructions)
 
 # 3. Test locally
@@ -39,7 +39,7 @@ vercel
 
 - **[QUICK-START.md](QUICK-START.md)** - 5-minute setup guide
 - **[SETUP-GUIDE.md](SETUP-GUIDE.md)** - Complete step-by-step instructions
-- **[sop-portal.jsx](sop-portal.jsx)** - Main React component (where you add your SOPs)
+- **[document-portal.jsx](document-portal.jsx)** - Main React component (where you add your documents)
 
 ## Architecture
 
@@ -68,7 +68,7 @@ Google Drive PDFs
 
 ```
 sop-portal-complete/
-├── sop-portal.jsx              ← Main component (EDIT THIS)
+├── document-portal.jsx              ← Main component (EDIT THIS)
 ├── package.json                ← Dependencies
 ├── vite.config.js             ← Build config
 ├── tailwind.config.js         ← Tailwind CSS config
@@ -89,7 +89,7 @@ sop-portal-complete/
 - Get File ID for each PDF
 
 ### 2. Configure
-- Open `sop-portal.jsx`
+- Open `document-portal.jsx`
 - Replace placeholder File IDs in `sopData` array
 - Save
 
@@ -109,7 +109,7 @@ Get live URL. Done.
 ## Customization
 
 ### Add/Edit SOPs
-Edit the `sopData` array in `sop-portal.jsx`:
+Edit the `sopData` array in `document-portal.jsx`:
 
 ```javascript
 const sopData = [
@@ -130,7 +130,7 @@ Find color classes and replace:
 - `text-gray-800` → Text color
 
 ### Add Logo
-After the title in `sop-portal.jsx`:
+After the title in `document-portal.jsx`:
 ```javascript
 <img src="https://your-logo-url.png" alt="Logo" className="h-16 mx-auto" />
 ```
@@ -162,7 +162,7 @@ After the title in `sop-portal.jsx`:
 ### Add a New SOP
 1. Upload PDF to Google Drive
 2. Get File ID
-3. Add to `sopData` array in `sop-portal.jsx`
+3. Add to `sopData` array in `document-portal.jsx`
 4. `npm run build`
 5. `vercel` (redeploy)
 

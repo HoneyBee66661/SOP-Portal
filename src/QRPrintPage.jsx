@@ -30,7 +30,7 @@ function QRCardPrint({ title, subtitle, url, id }) {
       ctx.drawImage(img, 50, 50, 1100, 1100)
       URL.revokeObjectURL(url)
       const link = document.createElement('a')
-      link.download = `sop-${id}.png`
+      link.download = `document-${id}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
     }
@@ -104,14 +104,14 @@ export default function QRPrintPage() {
         <div className="flex flex-wrap justify-center gap-10">
           <QRCardPrint
             id="portal"
-            title="SOP Portal"
-            subtitle="Scan to access all SOPs"
+            title="Document Portal"
+            subtitle="Scan to access all documents"
             url={portalUrl}
           />
           <QRCardPrint
             id="admin"
             title="Admin Panel"
-            subtitle="Scan to manage SOPs (restricted)"
+            subtitle="Scan to manage documents (restricted)"
             url={adminUrl}
           />
         </div>

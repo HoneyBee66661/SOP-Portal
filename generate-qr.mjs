@@ -6,12 +6,12 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const outDir = join(__dirname, 'qr-output')
 
-const PORTAL_URL = 'https://sop-portal-nine.vercel.app'
-const ADMIN_URL = 'https://sop-portal-nine.vercel.app/admin'
+const PORTAL_URL = 'https://document-portal.vercel.app'
+const ADMIN_URL = 'https://document-portal.vercel.app/admin'
 
 const qrs = [
-  { filename: 'qr-sop-portal.png', url: PORTAL_URL, label: 'SOP Portal' },
-  { filename: 'qr-sop-admin.png', url: ADMIN_URL, label: 'Admin Panel' },
+  { filename: 'qr-document-portal.png', url: PORTAL_URL, label: 'Document Portal' },
+  { filename: 'qr-document-admin.png', url: ADMIN_URL, label: 'Admin Panel' },
 ]
 
 async function generate() {
