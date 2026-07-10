@@ -4,16 +4,28 @@
  * How to install:
  * 1. Open your Google Sheet → Extensions → Apps Script
  * 2. Paste this entire file
- * 3. Update FOLDER_ID below with your Drive folder ID
- * 4. Click Save → Run "syncFromDrive" → Authorize
- * 5. (Optional) Click the clock icon → Add trigger → syncFromDrive → Time-driven → Every hour
+ * 3. Click Save → Run "syncFromDrive" → Authorize
+ * 4. Refresh the sheet — you'll see a custom menu "Document Portal"
+ *    Click it → "Sync from Drive" to pull new PDFs from the folder.
  */
 
-const FOLDER_ID = '1cqy2qiGCHuyvCdyyUh2RY51RdLNdkxMi'
+const PARENT_FOLDER_ID = '1QAkME-XJDi9ITXzqYlFeGfAWbEXWSadO'
+const UPLOADED_FOLDER_NAME = 'uploaded'
 const SHEET_NAME = 'Sheet1'
 
+function onOpen() {
+  const ui = SpreadsheetApp.getUi()
+  ui.createMenu('Document Portal')
+    .addItem('Sync from Drive', 'syncFromDrive')
+    .addToUi()
+}
+
 function syncFromDrive() {
-  const folder = DriveApp.getFolderById(FOLDER_ID)
+  const parent = DriveApp.getFolderById(PARENT_FOLDER_ID)
+  const folders = parent.getFoldersByName(UPLOADED_FOLDER_NAME)
+  if (!folders.hasNext()) throw new Error(`Folder "${UPLOADED_FOLDER_NAME}" not found under parent folder.`)
+
+  const folder = folders.next()
   const files = folder.getFiles()
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME)
   if (!sheet) return
@@ -33,10 +45,10 @@ function syncFromDrive() {
     maxId++
     newRows.push([
       maxId,
-      name.replace(/\.pdf$/i, ''),        // title (remove .pdf extension)
-      '',                                    // category (fill in manually)
-      '',                                    // description (fill in manually)
-      fileId,                                // gdrivePath
+      name.replace(/\.pdf$/i, ''),
+      '',
+      '',
+      fileId,
     ])
   }
 

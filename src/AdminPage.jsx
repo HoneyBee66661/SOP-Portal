@@ -90,7 +90,7 @@ export default function AdminPage({ onLogout }) {
               Refresh
             </button>
             <a
-              href="https://drive.google.com/drive/folders/1cqy2qiGCHuyvCdyyUh2RY51RdLNdkxMi"
+              href="https://drive.google.com/drive/folders/1QAkME-XJDi9ITXzqYlFeGfAWbEXWSadO"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition text-sm font-medium"
@@ -125,13 +125,12 @@ export default function AdminPage({ onLogout }) {
 
         {/* Info card */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
-          <p className="font-medium mb-1">Cara mengelola SOP:</p>
+          <p className="font-medium mb-1">Cara mengelola dokumen:</p>
           <ol className="list-decimal list-inside space-y-1 text-amber-700">
-            <li>Klik <strong>"Upload PDF"</strong> untuk upload file PDF ke Google Drive folder</li>
-            <li>Klik <strong>"Edit in Google Sheets"</strong> untuk membuka spreadsheet</li>
-            <li>Copy File ID dari URL Google Drive, paste ke kolom <strong>gdrivePath</strong> di sheet</li>
-            <li>Klik <strong>"Refresh"</strong> di sini untuk menarik perubahan terbaru</li>
-            <li>Portal di <strong>/</strong> otomatis mengambil data terbaru setiap kali dibuka</li>
+            <li>Klik <strong>"Upload PDF"</strong> untuk upload file PDF ke folder <strong>uploaded</strong> di Google Drive</li>
+            <li>Buka Google Sheet → menu <strong>Document Portal → Sync from Drive</strong> untuk menarik daftar file baru</li>
+            <li>Isi kolom <strong>category</strong> dan <strong>description</strong> di sheet jika diperlukan</li>
+            <li>Klik <strong>"Refresh"</strong> di sini untuk melihat perubahan</li>
           </ol>
         </div>
 
