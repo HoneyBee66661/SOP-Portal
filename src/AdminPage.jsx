@@ -20,7 +20,18 @@ export default function AdminPage({ onLogout }) {
       try { await fetch(SYNC_URL) } catch {}
     }
 
-    const data = await fetchSOPs()
+    let data = await fetchSOPs()
+
+    // When triggered after upload, retry if CSV cache hasn't refreshed yet
+    if (silent) {
+      for (let i = 0; i < 3; i++) {
+        if (data.length > sops.length) break
+        await new Promise(r => setTimeout(r, 4000))
+        try { await fetch(SYNC_URL) } catch {}
+        data = await fetchSOPs()
+      }
+    }
+
     setSops(data)
     setLoading(false)
     setRefreshing(false)
