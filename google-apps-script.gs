@@ -42,8 +42,8 @@ function syncFromDrive() {
       maxId,
       name.replace(/\.pdf$/i, ''),
       '',
-      '',
       fileId,
+      '',
     ])
   }
 
@@ -62,7 +62,7 @@ function getExistingData(sheet) {
     id: row[0],
     title: row[1],
     category: row[2],
-    description: row[3],
-    gdrivePath: row[4],
+    gdrivePath: row[3],
+    description: row[4],
   }))
 }
