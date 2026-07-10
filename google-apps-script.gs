@@ -9,8 +9,7 @@
  *    Click it → "Sync from Drive" to pull new PDFs from the folder.
  */
 
-const PARENT_FOLDER_ID = '1QAkME-XJDi9ITXzqYlFeGfAWbEXWSadO'
-const UPLOADED_FOLDER_NAME = 'uploaded'
+const UPLOAD_FOLDER_ID = '1bYE7lE42KZTQ2Ki5jYghdu2Njx-2Nnug'
 const SHEET_NAME = 'Sheet1'
 
 function onOpen() {
@@ -21,11 +20,7 @@ function onOpen() {
 }
 
 function syncFromDrive() {
-  const parent = DriveApp.getFolderById(PARENT_FOLDER_ID)
-  const folders = parent.getFoldersByName(UPLOADED_FOLDER_NAME)
-  if (!folders.hasNext()) throw new Error(`Folder "${UPLOADED_FOLDER_NAME}" not found under parent folder.`)
-
-  const folder = folders.next()
+  const folder = DriveApp.getFolderById(UPLOAD_FOLDER_ID)
   const files = folder.getFiles()
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME)
   if (!sheet) return

@@ -90,7 +90,7 @@ export default function AdminPage({ onLogout }) {
               Refresh
             </button>
             <a
-              href="https://drive.google.com/drive/folders/1QAkME-XJDi9ITXzqYlFeGfAWbEXWSadO"
+              href="https://drive.google.com/drive/folders/1bYE7lE42KZTQ2Ki5jYghdu2Njx-2Nnug"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition text-sm font-medium"
