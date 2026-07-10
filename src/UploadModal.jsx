@@ -2,7 +2,6 @@ import { useState, useRef } from 'react'
 import { Upload, X, Check, AlertCircle, Loader, FileText } from 'lucide-react'
 
 const MAX_SIZE = 30 * 1024 * 1024 // 30MB
-const CSV_CACHE_BUST = '?cache=' + Date.now()
 
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
@@ -82,17 +81,18 @@ function postViaIframe(url, params) {
 
 // Fetch CSV from published Sheet and check if a title exists
 async function verifyUploadInSheet(csvUrl, titleName) {
-  const res = await fetch(csvUrl + CSV_CACHE_BUST)
-  const csv = await res.text()
-  const lines = csv.trim().split('\n')
-  // Skip header row (index 0), check title column (index 1)
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',')
-    if (cols.length >= 2) {
-      const title = cols[1].trim().replace(/^"|"$/g, '')
-      if (title === titleName) return true
+  try {
+    const res = await fetch(csvUrl + '&cb=' + Date.now())
+    const csv = await res.text()
+    const lines = csv.trim().split('\n')
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',')
+      if (cols.length >= 2) {
+        const title = cols[1].trim().replace(/^"|"$/g, '')
+        if (title === titleName) return true
+      }
     }
-  }
+  } catch {}
   return false
 }
 
@@ -146,23 +146,15 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
         fileData: base64,
       })
 
-      // Wait for server to process the upload
+      // Wait for server to process + Drive sync
       setStatus('syncing')
-      await new Promise(r => setTimeout(r, 4000))
+      await new Promise(r => setTimeout(r, 5000))
 
-      // Trigger Drive → Sheet sync via doGet
-      const syncRes = await fetch(syncUrl)
-      const syncData = await syncRes.json()
-      if (!syncData.success) {
-        throw new Error(syncData.error || 'Sinkronisasi gagal')
-      }
-
-      // Verify the uploaded file actually appears in the sheet
+      // Verify the uploaded file appears in the sheet
       const found = csvUrl && await verifyUploadInSheet(csvUrl, titleName)
       if (!found) {
         throw new Error(
-          'File tidak ditemukan di spreadsheet setelah upload. ' +
-          'Pastikan Apps Script sudah di-redeploy dengan doPost().'
+          'File tidak ditemukan. Pastikan Apps Script sudah di-redeploy dengan doPost().'
         )
       }
 
