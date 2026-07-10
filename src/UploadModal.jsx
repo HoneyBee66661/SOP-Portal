@@ -1,173 +1,101 @@
 import { useState, useRef } from 'react'
 import { Upload, X, Check, AlertCircle, Loader, FileText } from 'lucide-react'
+import { readFileAsBase64, postViaIframe } from './lib.js'
 
 const MAX_SIZE = 30 * 1024 * 1024 // 30MB
 
-function readFileAsBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result.split(',')[1])
-    reader.onerror = () => reject(new Error('Gagal membaca file'))
-    reader.readAsDataURL(file)
-  })
-}
-
-/**
- * POST form data to a cross-origin URL via hidden iframe.
- * Apps Script web apps don't return CORS headers, so fetch() won't work.
- * Form+iframe is the only reliable way to send cross-origin POST from a browser.
- *
- * IMPORTANT: We CANNOT read the iframe response (cross-origin restriction).
- * This function fires the POST and waits a fixed delay, nothing more.
- * Verification happens afterward via CSV fetch.
- */
-function postViaIframe(url, params) {
-  return new Promise((resolve) => {
-    const iframeName = 'upload-frame-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
-    const iframe = document.createElement('iframe')
-    iframe.name = iframeName
-    iframe.style.display = 'none'
-    document.body.appendChild(iframe)
-
-    const form = document.createElement('form')
-    form.method = 'POST'
-    form.action = url
-    form.target = iframeName
-
-    for (const [key, val] of Object.entries(params)) {
-      const input = document.createElement('input')
-      input.type = 'hidden'
-      input.name = key
-      input.value = val
-      form.appendChild(input)
-    }
-
-    document.body.appendChild(form)
-
-    const cleanup = () => {
-      if (form.parentNode) form.parentNode.removeChild(form)
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
-    }
-
-    form.submit()
-
-    // Give time for the POST to reach the server and doPost to process.
-    // We can't read the response (cross-origin), so resolve optimistically.
-    setTimeout(() => {
-      cleanup()
-      resolve()
-    }, 3000)
-  })
-}
-
-/**
- * Poll the published CSV until the uploaded file title appears.
- * Google Sheets published CSV has a server-side cache that can lag
- * behind the actual sheet by 1-5 minutes, so we retry.
- */
-async function waitForFileInSheet(csvUrl, titleName, maxRetries = 4) {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const res = await fetch(csvUrl + '&cb=' + Date.now() + attempt)
-      const csv = await res.text()
-      const lines = csv.trim().split('\n')
-
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',')
-        if (cols.length >= 2) {
-          const title = cols[1].trim().replace(/^"|"$/g, '')
-          if (title === titleName) return true
-        }
-      }
-    } catch (e) {
-      // Transient network error — retry
-    }
-
-    if (attempt < maxRetries - 1) {
-      await new Promise((r) => setTimeout(r, 3000))
-    }
-  }
-  return false
-}
-
-export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete }) {
-  const [file, setFile] = useState(null)
-  const [status, setStatus] = useState('idle') // idle | reading | uploading | syncing | verifying | success | error
+export default function UploadModal({ syncUrl, onClose, onUploadComplete }) {
+  const [files, setFiles] = useState([])
+  const [status, setStatus] = useState('idle') // idle | reading | uploading | syncing | success | error
   const [error, setError] = useState(null)
+  const [progress, setProgress] = useState({ current: 0, total: 0 })
   const inputRef = useRef(null)
 
   const reset = () => {
-    setFile(null)
+    setFiles([])
     setStatus('idle')
     setError(null)
+    setProgress({ current: 0, total: 0 })
     if (inputRef.current) inputRef.current.value = ''
   }
 
   const handleFileChange = (e) => {
-    const f = e.target.files[0]
-    if (!f) return
+    const selected = Array.from(e.target.files || [])
+    if (selected.length === 0) return
 
-    if (f.type !== 'application/pdf') {
-      setError('Hanya file PDF yang diizinkan')
-      setFile(null)
-      return
+    // Validate each file
+    for (const f of selected) {
+      if (f.type !== 'application/pdf') {
+        setError(`"${f.name}" bukan file PDF`)
+        setFiles([])
+        return
+      }
+      if (f.size > MAX_SIZE) {
+        setError(`"${f.name}" terlalu besar. Maksimal 30MB.`)
+        setFiles([])
+        return
+      }
     }
 
-    if (f.size > MAX_SIZE) {
-      setError('File terlalu besar. Maksimal 30MB.')
-      setFile(null)
-      return
-    }
-
-    setFile(f)
+    setFiles(selected)
     setError(null)
+    setProgress({ current: 0, total: selected.length })
   }
 
   const handleUpload = async () => {
-    if (!file) return
+    if (files.length === 0) return
 
-    const titleName = file.name.replace(/\.pdf$/i, '')
     setStatus('reading')
     setError(null)
 
+    const uploadedNames = []
+
     try {
-      // 1. Read file as base64
-      const base64 = await readFileAsBase64(file)
-      setStatus('uploading')
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]
+        setProgress({ current: i, total: files.length })
 
-      // 2. POST to Apps Script via iframe (only way around CORS)
-      await postViaIframe(syncUrl, {
-        fileName: file.name,
-        fileData: base64,
-      })
+        setStatus('reading')
+        const base64 = await readFileAsBase64(f)
 
-      // 3. Wait for doPost + syncFromDrive to complete server-side
-      setStatus('syncing')
-      await new Promise((r) => setTimeout(r, 4000))
+        setStatus('uploading')
+        await postViaIframe(syncUrl, {
+          fileName: f.name,
+          fileData: base64,
+        })
 
-      // 4. Parent handles optimistic UI + background polling
-      if (onUploadComplete) {
-        await onUploadComplete(file.name)
+        setStatus('syncing')
+        await new Promise((r) => setTimeout(r, 4000))
+
+        uploadedNames.push(f.name)
       }
 
-      // 5. Done — modal closes, parent table already shows the file
+      // Notify parent with all uploaded filenames
+      if (onUploadComplete && uploadedNames.length > 0) {
+        await onUploadComplete(uploadedNames)
+      }
+
       setStatus('success')
       setTimeout(() => onClose(), 2000)
     } catch (err) {
-      setError(err.message || 'Upload gagal.')
+      setError(err.message || `Upload gagal pada file ${progress.current + 1}/${progress.total}`)
       setStatus('error')
     }
   }
 
-  const statusLabel = {
-    idle: 'Upload',
-    reading: 'Membaca file...',
-    uploading: 'Mengupload...',
-    syncing: 'Menyinkronkan...',
-    verifying: 'Memverifikasi...',
-    success: 'Berhasil!',
-    error: 'Upload Gagal',
+  const progressLabel = () => {
+    if (status === 'idle') return 'Upload'
+    if (status === 'success') return 'Berhasil!'
+    if (status === 'error') return 'Upload Gagal'
+    if (files.length > 1) {
+      return `${status === 'reading' ? 'Membaca' : status === 'uploading' ? 'Mengupload' : 'Menyinkronkan'} ${progress.current + 1}/${progress.total}`
+    }
+    return status === 'reading' ? 'Membaca file...'
+      : status === 'uploading' ? 'Mengupload...'
+      : 'Menyinkronkan...'
   }
+
+  const isBusy = status === 'reading' || status === 'uploading' || status === 'syncing'
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={onClose}>
@@ -177,7 +105,7 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-gray-100 rounded-lg transition"
-            disabled={status === 'uploading' || status === 'syncing' || status === 'verifying'}
+            disabled={isBusy}
           >
             <X size={20} className="text-gray-500" />
           </button>
@@ -189,7 +117,7 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
               <Check size={32} className="text-green-600" />
             </div>
             <p className="font-semibold text-gray-800 text-lg">Upload Berhasil</p>
-            <p className="text-sm text-gray-500 mt-1">{file?.name}</p>
+            <p className="text-sm text-gray-500 mt-1">{files.length} file berhasil diupload</p>
           </div>
         ) : status === 'error' ? (
           <div>
@@ -219,47 +147,54 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
           <div>
             {/* File picker area */}
             <div
-              onClick={() => inputRef.current?.click()}
+              onClick={() => !isBusy && inputRef.current?.click()}
               className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition mb-4 ${
-                file ? 'border-indigo-300 bg-indigo-50' : 'border-gray-300 hover:border-indigo-300 hover:bg-gray-50'
-              }`}
+                files.length > 0
+                  ? 'border-indigo-300 bg-indigo-50'
+                  : 'border-gray-300 hover:border-indigo-300 hover:bg-gray-50'
+              } ${isBusy ? 'pointer-events-none opacity-60' : ''}`}
             >
               <input
                 ref={inputRef}
                 type="file"
                 accept=".pdf"
+                multiple
                 onChange={handleFileChange}
                 className="hidden"
               />
-              {file ? (
+              {files.length > 0 ? (
                 <div>
                   <FileText size={40} className="text-indigo-500 mx-auto mb-2" />
-                  <p className="font-medium text-gray-800 text-sm">{file.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
+                  <p className="font-medium text-gray-800 text-sm">{files.length} file dipilih</p>
+                  <ul className="text-xs text-gray-500 mt-2 space-y-1 max-h-24 overflow-y-auto">
+                    {files.map((f, i) => (
+                      <li key={i} className="truncate">{f.name} ({(f.size / 1024 / 1024).toFixed(1)} MB)</li>
+                    ))}
+                  </ul>
                 </div>
               ) : (
                 <div>
                   <Upload size={40} className="text-gray-400 mx-auto mb-2" />
                   <p className="font-medium text-gray-600 text-sm">Klik untuk pilih file PDF</p>
-                  <p className="text-xs text-gray-400 mt-1">Maksimal 30MB</p>
+                  <p className="text-xs text-gray-400 mt-1">Maksimal 30MB per file, bisa pilih banyak</p>
                 </div>
               )}
             </div>
 
-            {/* Upload button */}
-            {status === 'reading' || status === 'uploading' || status === 'syncing' || status === 'verifying' ? (
+            {/* Upload/Progress button */}
+            {isBusy ? (
               <div className="flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white font-medium rounded-xl text-sm">
                 <Loader size={16} className="animate-spin" />
-                {statusLabel[status]}
+                {progressLabel()}
               </div>
             ) : (
               <button
                 onClick={handleUpload}
-                disabled={!file}
+                disabled={files.length === 0}
                 className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition text-sm"
               >
                 <Upload size={16} className="inline mr-1.5" />
-                Upload
+                Upload{files.length > 1 ? ` (${files.length} file)` : ''}
               </button>
             )}
           </div>

@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Shield, LogOut, ExternalLink, RefreshCw, Loader, Upload, Check, Clock } from 'lucide-react'
+import { Shield, LogOut, ExternalLink, RefreshCw, Loader, Upload, Check, Clock, Trash2, GripVertical } from 'lucide-react'
 import UploadModal from './UploadModal.jsx'
-import { SHEET_CSV_URL, SHEET_EDIT_URL, SYNC_URL, extractFileId, fetchSOPs } from './lib.js'
+import { SHEET_CSV_URL, SHEET_EDIT_URL, SYNC_URL, extractFileId, fetchSOPs, postViaIframe, readFileAsBase64 } from './lib.js'
 
 export default function AdminPage({ onLogout }) {
   const [sops, setSops] = useState([])
@@ -11,10 +11,13 @@ export default function AdminPage({ onLogout }) {
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadMsg, setUploadMsg] = useState(null)
   const [optimisticFiles, setOptimisticFiles] = useState([])
-  const sopsRef = useRef(sops)
-  sopsRef.current = sops
+  const [rowOrder, setRowOrder] = useState([])
+  const [dragIdx, setDragIdx] = useState(null)
+  const [deletingIds, setDeletingIds] = useState([])
+  const [updatingId, setUpdatingId] = useState(null)
+  const updateInputRef = useRef(null)
 
-  const loadData = async (silent) => {
+  const loadData = useCallback(async (silent) => {
     if (!silent) setLoading(true)
     else setRefreshing(true)
 
@@ -26,26 +29,37 @@ export default function AdminPage({ onLogout }) {
     setSops(data)
     setLoading(false)
     setRefreshing(false)
-  }
+  }, [])
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData() }, [loadData])
 
-  const handleUploadComplete = async (fileName) => {
-    if (!fileName) return
+  // Keep rowOrder in sync with sops (new items appended, deleted items removed)
+  useEffect(() => {
+    setRowOrder(prev => {
+      const cur = new Set(sops.map(s => s.id))
+      const kept = prev.filter(id => cur.has(id))
+      for (const s of sops) {
+        if (!kept.includes(s.id)) kept.push(s.id)
+      }
+      return kept
+    })
+  }, [sops])
 
-    const titleName = fileName.replace(/\.pdf$/i, '')
+  const handleUploadComplete = async (fileNames) => {
+    if (!fileNames || fileNames.length === 0) return
+
     setUploadMsg(null)
 
     // Optimistic: add to table immediately with syncing badge
-    setOptimisticFiles((prev) => [...prev, titleName])
+    setOptimisticFiles((prev) => [...prev, ...fileNames.map(n => n.replace(/\.pdf$/i, ''))])
 
-    // Background: poll CSV until the new file appears (handles cache delay)
+    // Background: poll CSV until the new files appear
     let synced = false
     for (let i = 0; i < 8; i++) {
       await new Promise((r) => setTimeout(r, 5000))
       try { await fetch(SYNC_URL) } catch {}
       const data = await fetchSOPs()
-      if (data.some((d) => d.title === titleName)) {
+      if (fileNames.every(n => data.some(d => d.title === n.replace(/\.pdf$/i, '')))) {
         setSops(data)
         synced = true
         break
@@ -53,24 +67,94 @@ export default function AdminPage({ onLogout }) {
     }
 
     if (!synced) {
-      // Force one final load anyway
       const data = await fetchSOPs()
       setSops(data)
     }
 
-    setOptimisticFiles((prev) => prev.filter((f) => f !== titleName))
+    setOptimisticFiles((prev) => prev.filter(f => !fileNames.some(n => n.replace(/\.pdf$/i, '') === f)))
     setUploadMsg({ type: 'success', text: 'Upload berhasil! Data tersinkron.' })
     setTimeout(() => setUploadMsg(null), 4000)
   }
 
-  const getQRValue = (gdrivePath) =>
-    `https://drive.google.com/file/d/${extractFileId(gdrivePath)}/view`
+  const handleDelete = async (sop) => {
+    if (!window.confirm(`Hapus "${sop.title}"?`)) return
+    setDeletingIds(prev => [...prev, sop.id])
+    setSops(prev => prev.filter(s => s.id !== sop.id))
 
-  // Merge real data with optimistic (syncing) entries
-  const displaySops = [
-    ...sops,
-    ...optimisticFiles
-      .filter((name) => !sops.some((s) => s.title === name))
+    await postViaIframe(SYNC_URL, {
+      action: 'delete',
+      fileId: sop.gdrivePath,
+      rowId: sop.id,
+    })
+
+    setDeletingIds(prev => prev.filter(id => id !== sop.id))
+    loadData(true)
+  }
+
+  const handleUpdateClick = (sop) => {
+    setUpdatingId(sop.gdrivePath)
+    updateInputRef.current?.click()
+  }
+
+  const handleUpdateFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !updatingId) return
+    if (file.type !== 'application/pdf') {
+      setUploadMsg({ type: 'error', text: `"${file.name}" bukan file PDF` })
+      setTimeout(() => setUploadMsg(null), 4000)
+      setUpdatingId(null)
+      if (updateInputRef.current) updateInputRef.current.value = ''
+      return
+    }
+
+    const base64 = await readFileAsBase64(file)
+    setUpdatingId(null)
+    if (updateInputRef.current) updateInputRef.current.value = ''
+
+    await postViaIframe(SYNC_URL, {
+      action: 'update',
+      fileId: updatingId, // Actually old fileId to replace
+      fileName: file.name,
+      fileData: base64,
+    })
+
+    loadData(true)
+  }
+
+  // ── Drag-and-drop ──
+
+  const handleDragStart = (idx) => {
+    setDragIdx(idx)
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (idx) => {
+    if (dragIdx === null || dragIdx === idx) {
+      setDragIdx(null)
+      return
+    }
+
+    const reordered = [...rowOrder]
+    const [moved] = reordered.splice(dragIdx, 1)
+    reordered.splice(idx, 0, moved)
+    setRowOrder(reordered)
+    setDragIdx(null)
+
+    // Fire reorder to server
+    postViaIframe(SYNC_URL, {
+      action: 'reorder',
+      order: JSON.stringify(reordered),
+    })
+  }
+
+  // Merge real data with optimistic (syncing) entries, sorted by rowOrder
+  const displaySops = useMemo(() => {
+    const real = sops.filter(s => !deletingIds.includes(s.id))
+    const syncing = optimisticFiles
+      .filter(name => !sops.some(s => s.title === name))
       .map((name, i) => ({
         id: `syncing-${i}`,
         title: name,
@@ -78,10 +162,21 @@ export default function AdminPage({ onLogout }) {
         gdrivePath: null,
         description: 'Menunggu sinkronisasi...',
         _syncing: true,
-      })),
-  ]
+      }))
 
-  const totalSyncing = optimisticFiles.length - sops.some((s) => optimisticFiles.includes(s.title))
+    const ordered = [...real].sort((a, b) => {
+      const ai = rowOrder.indexOf(a.id)
+      const bi = rowOrder.indexOf(b.id)
+      return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi)
+    })
+
+    return [...ordered, ...syncing]
+  }, [sops, optimisticFiles, rowOrder, deletingIds])
+
+  const totalSyncing = optimisticFiles.length - sops.some(s => optimisticFiles.includes(s.title))
+
+  const getQRValue = (gdrivePath) =>
+    `https://drive.google.com/file/d/${extractFileId(gdrivePath)}/view`
 
   if (loading) {
     return (
@@ -171,6 +266,7 @@ export default function AdminPage({ onLogout }) {
             <li>File otomatis tersimpan ke Drive dan tersinkron ke spreadsheet</li>
             <li>Edit kolom <strong>category</strong> dan <strong>description</strong> di sheet jika diperlukan</li>
             <li>Klik <strong>"Refresh"</strong> untuk melihat perubahan di portal</li>
+            <li>Seret baris tabel untuk mengurutkan ulang</li>
           </ol>
         </div>
 
@@ -180,29 +276,46 @@ export default function AdminPage({ onLogout }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
+                  <th className="w-8 px-1 py-3"></th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">#</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Title</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Category</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">File ID</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">QR Code</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {displaySops.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-12 text-gray-500">
+                    <td colSpan={7} className="text-center py-12 text-gray-500">
                       Belum ada SOP di sheet. Tambahkan entri baru.
                     </td>
                   </tr>
                 ) : (
-                  displaySops.map((sop) => (
+                  displaySops.map((sop, idx) => (
                     <tr
-                      key={sop.id}
-                      className={`transition ${sop._syncing ? 'opacity-60' : 'hover:bg-gray-50'}`}
+                      key={sop._syncing ? sop.id : `sop-${sop.id}`}
+                      draggable={!sop._syncing}
+                      onDragStart={() => handleDragStart(idx)}
+                      onDragOver={handleDragOver}
+                      onDrop={() => handleDrop(idx)}
+                      className={`transition ${
+                        sop._syncing ? 'opacity-60' : 'hover:bg-gray-50 cursor-default'
+                      } ${dragIdx === idx ? 'opacity-50 bg-indigo-50' : ''}`}
                     >
+                      <td className="px-1 py-3 text-gray-400">
+                        {!sop._syncing && (
+                          <span className="cursor-grab active:cursor-grabbing inline-flex">
+                            <GripVertical size={16} />
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-gray-500">
                         {sop._syncing ? (
                           <Loader size={14} className="animate-spin text-blue-500" />
+                        ) : deletingIds.includes(sop.id) ? (
+                          <Loader size={14} className="animate-spin text-red-500" />
                         ) : (
                           sop.id
                         )}
@@ -214,6 +327,12 @@ export default function AdminPage({ onLogout }) {
                             <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                               <Clock size={10} />
                               syncing
+                            </span>
+                          )}
+                          {updatingId === sop.gdrivePath && (
+                            <span className="inline-flex items-center gap-1 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                              <Loader size={10} className="animate-spin" />
+                              updating
                             </span>
                           )}
                         </div>
@@ -248,6 +367,32 @@ export default function AdminPage({ onLogout }) {
                           <QRCodeSVG value={getQRValue(sop.gdrivePath)} size={40} level="H" />
                         )}
                       </td>
+                      <td className="px-4 py-3">
+                        {!sop._syncing && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleUpdateClick(sop)}
+                              disabled={updatingId !== null}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-40"
+                              title="Update file (ganti dengan versi baru)"
+                            >
+                              <Upload size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(sop)}
+                              disabled={deletingIds.includes(sop.id)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-40"
+                              title="Hapus"
+                            >
+                              {deletingIds.includes(sop.id) ? (
+                                <Loader size={16} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={16} />
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -255,6 +400,15 @@ export default function AdminPage({ onLogout }) {
             </table>
           </div>
         </div>
+
+        {/* Hidden file input for update */}
+        <input
+          ref={updateInputRef}
+          type="file"
+          accept=".pdf"
+          onChange={handleUpdateFile}
+          className="hidden"
+        />
 
         {/* Stats */}
         <div className="mt-4 text-sm text-gray-500 text-center">
@@ -269,7 +423,6 @@ export default function AdminPage({ onLogout }) {
       {showUploadModal && (
         <UploadModal
           syncUrl={SYNC_URL}
-          csvUrl={SHEET_CSV_URL}
           onClose={() => setShowUploadModal(false)}
           onUploadComplete={handleUploadComplete}
         />

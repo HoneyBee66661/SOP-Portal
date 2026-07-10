@@ -9,6 +9,53 @@ export const SHEET_EDIT_URL =
 export const SYNC_URL =
   'https://script.google.com/macros/s/AKfycbyjl28sV18l_KiiC46NWy0bQVLiCFk5AKzuYUWLypoZt4tXrvGr8pk7phw6bTHxhrJoxg/exec'
 
+// ── File helpers ───────────────────────────────────────────────
+export function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result.split(',')[1])
+    reader.onerror = () => reject(new Error('Gagal membaca file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/**
+ * POST form data to a cross-origin URL via hidden iframe.
+ * Apps Script web apps don't return CORS headers, so iframe is the only way.
+ * Resolves after a fixed delay — response is unreadable (cross-origin).
+ */
+export function postViaIframe(url, params) {
+  return new Promise((resolve) => {
+    const iframeName = 'frame-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
+    const iframe = document.createElement('iframe')
+    iframe.name = iframeName
+    iframe.style.display = 'none'
+    document.body.appendChild(iframe)
+
+    const form = document.createElement('form')
+    form.method = 'POST'
+    form.action = url
+    form.target = iframeName
+
+    for (const [key, val] of Object.entries(params)) {
+      const input = document.createElement('input')
+      input.type = 'hidden'
+      input.name = key
+      input.value = val
+      form.appendChild(input)
+    }
+
+    document.body.appendChild(form)
+    form.submit()
+
+    setTimeout(() => {
+      if (form.parentNode) form.parentNode.removeChild(form)
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+      resolve()
+    }, 3000)
+  })
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 export function extractFileId(input) {
   if (!input) return input
@@ -43,6 +90,7 @@ export async function fetchSOPs() {
       })
       if (entry.id) {
         entry.id = parseInt(entry.id, 10)
+        if (entry.priority) entry.priority = parseInt(entry.priority, 10)
         items.push(entry)
       }
     }
