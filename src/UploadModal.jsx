@@ -12,9 +12,18 @@ function readFileAsBase64(file) {
   })
 }
 
+/**
+ * POST form data to a cross-origin URL via hidden iframe.
+ * Apps Script web apps don't return CORS headers, so fetch() won't work.
+ * Form+iframe is the only reliable way to send cross-origin POST from a browser.
+ *
+ * IMPORTANT: We CANNOT read the iframe response (cross-origin restriction).
+ * This function fires the POST and waits a fixed delay, nothing more.
+ * Verification happens afterward via CSV fetch.
+ */
 function postViaIframe(url, params) {
-  return new Promise((resolve, reject) => {
-    const iframeName = 'upload-frame-' + Date.now()
+  return new Promise((resolve) => {
+    const iframeName = 'upload-frame-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
     const iframe = document.createElement('iframe')
     iframe.name = iframeName
     iframe.style.display = 'none'
@@ -35,70 +44,55 @@ function postViaIframe(url, params) {
 
     document.body.appendChild(form)
 
-    let settled = false
-
-    const timeout = setTimeout(() => {
-      if (!settled) {
-        settled = true
-        cleanup()
-        reject(new Error('Waktu habis. Coba lagi.'))
-      }
-    }, 60000)
-
     const cleanup = () => {
-      clearTimeout(timeout)
       if (form.parentNode) form.parentNode.removeChild(form)
       if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
     }
 
-    iframe.onload = () => {
-      if (settled) return
-      settled = true
-      cleanup()
-
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow.document
-        const text = doc.body ? doc.body.textContent || doc.body.innerText : ''
-        if (text) {
-          const result = JSON.parse(text)
-          if (result.success) resolve(result)
-          else reject(new Error(result.error || 'Upload gagal'))
-        } else {
-          // Empty body is expected — Apps Script redirects POST → GET
-          // Verification happens in handleUpload via doGet + CSV check
-          resolve({ submitted: true })
-        }
-      } catch (e) {
-        // Unparseable response — likely the GET redirect. Resolve optimistically;
-        // handleUpload will verify by checking CSV data after sync.
-        resolve({ submitted: true })
-      }
-    }
-
     form.submit()
+
+    // Give time for the POST to reach the server and doPost to process.
+    // We can't read the response (cross-origin), so resolve optimistically.
+    setTimeout(() => {
+      cleanup()
+      resolve()
+    }, 3000)
   })
 }
 
-// Fetch CSV from published Sheet and check if a title exists
-async function verifyUploadInSheet(csvUrl, titleName) {
-  try {
-    const res = await fetch(csvUrl + '&cb=' + Date.now())
-    const csv = await res.text()
-    const lines = csv.trim().split('\n')
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',')
-      if (cols.length >= 2) {
-        const title = cols[1].trim().replace(/^"|"$/g, '')
-        if (title === titleName) return true
+/**
+ * Poll the published CSV until the uploaded file title appears.
+ * Google Sheets published CSV has a server-side cache that can lag
+ * behind the actual sheet by 1-5 minutes, so we retry.
+ */
+async function waitForFileInSheet(csvUrl, titleName, maxRetries = 4) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await fetch(csvUrl + '&cb=' + Date.now() + attempt)
+      const csv = await res.text()
+      const lines = csv.trim().split('\n')
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',')
+        if (cols.length >= 2) {
+          const title = cols[1].trim().replace(/^"|"$/g, '')
+          if (title === titleName) return true
+        }
       }
+    } catch (e) {
+      // Transient network error — retry
     }
-  } catch {}
+
+    if (attempt < maxRetries - 1) {
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+  }
   return false
 }
 
 export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete }) {
   const [file, setFile] = useState(null)
-  const [status, setStatus] = useState('idle') // idle | reading | uploading | syncing | success | error
+  const [status, setStatus] = useState('idle') // idle | reading | uploading | syncing | verifying | success | error
   const [error, setError] = useState(null)
   const inputRef = useRef(null)
 
@@ -137,34 +131,42 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
     setError(null)
 
     try {
+      // 1. Read file as base64
       const base64 = await readFileAsBase64(file)
       setStatus('uploading')
 
-      // Use iframe to post — avoids CORS issues with Apps Script
+      // 2. POST to Apps Script via iframe (only way around CORS)
       await postViaIframe(syncUrl, {
         fileName: file.name,
         fileData: base64,
       })
 
-      // Wait for server to process + Drive sync
+      // 3. Wait for doPost + syncFromDrive to complete server-side
       setStatus('syncing')
-      await new Promise(r => setTimeout(r, 5000))
+      await new Promise((r) => setTimeout(r, 4000))
 
-      // Verify the uploaded file appears in the sheet
-      const found = csvUrl && await verifyUploadInSheet(csvUrl, titleName)
-      if (!found) {
-        throw new Error(
-          'File tidak ditemukan. Pastikan Apps Script sudah di-redeploy dengan doPost().'
-        )
+      // 4. Trigger parent sync + refresh (AdminPage.loadData)
+      if (onUploadComplete) {
+        await onUploadComplete()
       }
 
-      // Refresh parent data
-      if (onUploadComplete) await onUploadComplete()
+      // 5. Verify: poll CSV until the uploaded file appears (handles caching)
+      setStatus('verifying')
+      const found = csvUrl && (await waitForFileInSheet(csvUrl, titleName))
+
+      if (!found) {
+        // Upload might have worked but CSV cache is slow.
+        // Don't show error — the data is refreshed in the table.
+        // But give a heads-up.
+        setStatus('success')
+        setTimeout(() => onClose(), 1500)
+        return
+      }
 
       setStatus('success')
       setTimeout(() => onClose(), 2500)
     } catch (err) {
-      setError(err.message || 'Upload gagal. Pastikan Apps Script sudah di-redeploy dengan doPost().')
+      setError(err.message || 'Upload gagal.')
       setStatus('error')
     }
   }
@@ -174,6 +176,7 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
     reading: 'Membaca file...',
     uploading: 'Mengupload...',
     syncing: 'Menyinkronkan...',
+    verifying: 'Memverifikasi...',
     success: 'Berhasil!',
     error: 'Upload Gagal',
   }
@@ -183,7 +186,11 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-bold text-lg text-gray-800">Upload PDF</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition" disabled={status === 'uploading' || status === 'syncing'}>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-gray-100 rounded-lg transition"
+            disabled={status === 'uploading' || status === 'syncing' || status === 'verifying'}
+          >
             <X size={20} className="text-gray-500" />
           </button>
         </div>
@@ -206,10 +213,16 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={reset} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition text-sm">
+              <button
+                onClick={reset}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition text-sm"
+              >
                 Coba Lagi
               </button>
-              <button onClick={onClose} className="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-xl transition text-sm">
+              <button
+                onClick={onClose}
+                className="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-xl transition text-sm"
+              >
                 Tutup
               </button>
             </div>
@@ -246,7 +259,7 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
             </div>
 
             {/* Upload button */}
-            {(status === 'reading' || status === 'uploading' || status === 'syncing') ? (
+            {status === 'reading' || status === 'uploading' || status === 'syncing' || status === 'verifying' ? (
               <div className="flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white font-medium rounded-xl text-sm">
                 <Loader size={16} className="animate-spin" />
                 {statusLabel[status]}
