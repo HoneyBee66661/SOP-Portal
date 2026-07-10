@@ -46,35 +46,36 @@ export default function AdminPage({ onLogout }) {
     })
   }, [sops])
 
-  const handleUploadComplete = async (fileNames) => {
+  const handleUploadComplete = (fileNames) => {
     if (!fileNames || fileNames.length === 0) return
 
     setUploadMsg(null)
 
-    // Optimistic: add to table immediately with syncing badge
-    setOptimisticFiles((prev) => [...prev, ...fileNames.map(n => n.replace(/\.pdf$/i, ''))])
+    // Add to table immediately with syncing badge
+    const titles = fileNames.map(n => n.replace(/\.pdf$/i, ''))
+    setOptimisticFiles((prev) => [...prev, ...titles])
 
-    // Background: poll CSV until the new files appear
-    let synced = false
-    for (let i = 0; i < 8; i++) {
-      await new Promise((r) => setTimeout(r, 5000))
-      try { await fetch(SYNC_URL) } catch {}
-      const data = await fetchSOPs()
-      if (fileNames.every(n => data.some(d => d.title === n.replace(/\.pdf$/i, '')))) {
-        setSops(data)
-        synced = true
-        break
+    // Background polling — doesn't block the modal
+    ;(async () => {
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 5000))
+        try { await fetch(SYNC_URL) } catch {}
+        const data = await fetchSOPs()
+        if (titles.every(t => data.some(d => d.title === t))) {
+          setSops(data)
+          setOptimisticFiles((prev) => prev.filter(f => !titles.includes(f)))
+          setUploadMsg({ type: 'success', text: 'Upload berhasil! Data tersinkron.' })
+          setTimeout(() => setUploadMsg(null), 4000)
+          return
+        }
       }
-    }
-
-    if (!synced) {
-      const data = await fetchSOPs()
-      setSops(data)
-    }
-
-    setOptimisticFiles((prev) => prev.filter(f => !fileNames.some(n => n.replace(/\.pdf$/i, '') === f)))
-    setUploadMsg({ type: 'success', text: 'Upload berhasil! Data tersinkron.' })
-    setTimeout(() => setUploadMsg(null), 4000)
+      // After 5 min still not found — keep entries, warn user to refresh manually
+      setUploadMsg({
+        type: 'error',
+        text: 'File sudah diupload ke Drive tapi CSV cache Google Sheets lambat. Klik tombol Refresh untuk memeriksa.',
+      })
+      setTimeout(() => setUploadMsg(null), 10000)
+    })()
   }
 
   const handleDelete = async (sop) => {
