@@ -1,56 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText, Loader } from 'lucide-react'
-
-const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQoaVGsNxKVjsjo1bWN-Yz6_ZSFFiqQYcME9zPwhUadOVjVTPwDRJIkLcTPbA_x-4Sm8W6zkQmLvBnk/pub?output=csv'
-
-function extractFileId(input) {
-  if (!input) return input
-  const match = input.match(/\/d\/([a-zA-Z0-9_-]+)/)
-  return match ? match[1] : input
-}
-
-function getGDriveUrl(fileId) {
-  return `https://drive.google.com/file/d/${extractFileId(fileId)}/view`
-}
-
-function getGDriveDownload(fileId) {
-  return `https://drive.google.com/uc?export=download&id=${extractFileId(fileId)}`
-}
-
-async function fetchSOPs() {
-  // Try fetching from Google Sheets
-  try {
-    const res = await fetch(SHEET_CSV_URL)
-    const csv = await res.text()
-    const lines = csv.trim().split('\n')
-    if (lines.length < 2) return []
-
-    const headers = lines[0].split(',').map(h => h.trim())
-    const items = []
-
-    for (let i = 1; i < lines.length; i++) {
-      const vals = lines[i].split(',').map(v => v.trim())
-      const entry = {}
-      headers.forEach((h, idx) => { entry[h] = vals[idx] || '' })
-      if (entry.id) {
-        entry.id = parseInt(entry.id, 10)
-        items.push(entry)
-      }
-    }
-
-    // Cache in localStorage
-    localStorage.setItem('document-portal-cache', JSON.stringify(items))
-    return items
-  } catch (e) {
-    // Fallback to cache
-    const cached = localStorage.getItem('document-portal-cache')
-    if (cached) {
-      try { return JSON.parse(cached) } catch {}
-    }
-    return []
-  }
-}
+import { extractFileId, getGDriveUrl, getGDriveDownload, fetchSOPs } from './src/lib.js'
 
 function PortalQRCard({ label, url, sub }) {
   const [copied, setCopied] = useState(false)
