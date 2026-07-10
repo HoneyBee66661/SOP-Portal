@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Shield, LogOut, ExternalLink, RefreshCw, Loader, Upload } from 'lucide-react'
+import { Shield, LogOut, ExternalLink, RefreshCw, Loader, Upload, Check } from 'lucide-react'
+import UploadModal from './UploadModal.jsx'
 
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQoaVGsNxKVjsjo1bWN-Yz6_ZSFFiqQYcME9zPwhUadOVjVTPwDRJIkLcTPbA_x-4Sm8W6zkQmLvBnk/pub?output=csv'
 const SHEET_EDIT_URL = 'https://docs.google.com/spreadsheets/d/1c_qGvb1jpfL5SZFeuRxKsQO4ddyPJlSFObsyFG4wItc/edit'
-const SYNC_URL = 'PASTE_YOUR_WEB_APP_URL_HERE' // ganti setelah deploy Apps Script
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyjl28sV18l_KiiC46NWy0bQVLiCFk5AKzuYUWLypoZt4tXrvGr8pk7phw6bTHxhrJoxg/exec' // ganti setelah deploy Apps Script
 
 const extractFileId = (input) => {
   if (!input) return input
@@ -47,6 +48,8 @@ export default function AdminPage({ onLogout }) {
   const [sops, setSops] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState(null) // { type: 'success'|'error', text }
 
   const loadData = async (silent) => {
     if (!silent) setLoading(true)
@@ -64,6 +67,13 @@ export default function AdminPage({ onLogout }) {
   }
 
   useEffect(() => { loadData() }, [])
+
+  const handleUploadComplete = async () => {
+    setUploadMsg(null)
+    await loadData(true)
+    setUploadMsg({ type: 'success', text: 'Upload berhasil! Data tersinkron.' })
+    setTimeout(() => setUploadMsg(null), 4000)
+  }
 
   const getQRValue = (gdrivePath) =>
     `https://drive.google.com/file/d/${extractFileId(gdrivePath)}/view`
@@ -96,15 +106,13 @@ export default function AdminPage({ onLogout }) {
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
               Refresh
             </button>
-            <a
-              href="https://drive.google.com/drive/folders/1bYE7lE42KZTQ2Ki5jYghdu2Njx-2Nnug"
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => setShowUploadModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition text-sm font-medium"
             >
               <Upload size={16} />
               Upload PDF
-            </a>
+            </button>
             <a
               href={SHEET_EDIT_URL}
               target="_blank"
@@ -130,14 +138,26 @@ export default function AdminPage({ onLogout }) {
           </div>
         </div>
 
+        {/* Upload status banner */}
+        {uploadMsg && (
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl mb-4 text-sm font-medium ${
+            uploadMsg.type === 'success'
+              ? 'bg-green-50 border border-green-200 text-green-700'
+              : 'bg-red-50 border border-red-200 text-red-700'
+          }`}>
+            {uploadMsg.type === 'success' ? <Check size={16} /> : null}
+            {uploadMsg.text}
+          </div>
+        )}
+
         {/* Info card */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
           <p className="font-medium mb-1">Cara mengelola dokumen:</p>
           <ol className="list-decimal list-inside space-y-1 text-amber-700">
-            <li>Klik <strong>"Upload PDF"</strong> untuk upload file ke folder Google Drive</li>
-            <li>Klik <strong>"Refresh"</strong> — otomatis menyinkronkan file baru ke spreadsheet</li>
-            <li>Isi kolom <strong>category</strong> dan <strong>description</strong> di sheet jika diperlukan</li>
-            <li>Klik <strong>"Refresh"</strong> lagi untuk melihat perubahan di portal</li>
+            <li>Klik <strong>"Upload PDF"</strong> dan pilih file — upload langsung dari sini</li>
+            <li>File otomatis tersimpan ke Drive dan tersinkron ke spreadsheet</li>
+            <li>Edit kolom <strong>category</strong> dan <strong>description</strong> di sheet jika diperlukan</li>
+            <li>Klik <strong>"Refresh"</strong> untuk melihat perubahan di portal</li>
           </ol>
         </div>
 
@@ -197,6 +217,13 @@ export default function AdminPage({ onLogout }) {
           Total: {sops.length} SOP
         </div>
       </div>
+      {showUploadModal && (
+        <UploadModal
+          syncUrl={SYNC_URL}
+          onClose={() => setShowUploadModal(false)}
+          onUploadComplete={handleUploadComplete}
+        />
+      )}
     </div>
   )
 }

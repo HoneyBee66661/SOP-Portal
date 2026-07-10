@@ -32,6 +32,54 @@ function doGet() {
   }
 }
 
+function doPost(e) {
+  try {
+    const fileName = e.parameter.fileName
+    const fileData = e.parameter.fileData
+
+    if (!fileName || !fileData) {
+      throw new Error('Missing fileName or fileData')
+    }
+
+    if (!fileName.toLowerCase().endsWith('.pdf')) {
+      throw new Error('Only PDF files are allowed')
+    }
+
+    if (!fileData.startsWith('JVBERi0')) {
+      throw new Error('File does not appear to be a valid PDF')
+    }
+
+    const folder = DriveApp.getFolderById(UPLOAD_FOLDER_ID)
+
+    // Handle duplicate filename
+    let finalName = fileName
+    const existing = folder.getFilesByName(fileName)
+    if (existing.hasNext()) {
+      const ts = new Date().getTime()
+      finalName = fileName.replace(/\.pdf$/i, '') + '_' + ts + '.pdf'
+    }
+
+    const decoded = Utilities.base64Decode(fileData)
+    const blob = Utilities.newBlob(decoded, 'application/pdf', finalName)
+    const createdFile = folder.createFile(blob)
+
+    // Sync sheet
+    syncFromDrive_(SpreadsheetApp.openById(SHEET_ID))
+
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      fileId: createdFile.getId(),
+      fileName: finalName,
+    })).setMimeType(ContentService.MimeType.JSON)
+
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: e.message,
+    })).setMimeType(ContentService.MimeType.JSON)
+  }
+}
+
 function syncFromDrive() {
   syncFromDrive_(SpreadsheetApp.getActiveSpreadsheet())
 }
