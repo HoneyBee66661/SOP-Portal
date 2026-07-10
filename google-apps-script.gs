@@ -12,7 +12,7 @@
 
 const UPLOAD_FOLDER_ID = '1bYE7lE42KZTQ2Ki5jYghdu2Njx-2Nnug'
 const SHEET_ID = '1c_qGvb1jpfL5SZFeuRxKsQO4ddyPJlSFObsyFG4wItc'
-const SHEET_NAME = 'Sheet1'
+const SHEET_NAME = 'Portal Database'
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi()
