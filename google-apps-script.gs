@@ -6,10 +6,12 @@
  * 2. Paste this entire file
  * 3. Click Save → Run "syncFromDrive" → Authorize
  * 4. Refresh the sheet — you'll see a custom menu "Document Portal"
- *    Click it → "Sync from Drive" to pull new PDFs from the folder.
+ * 5. Deploy as web app: Deploy → New → Web app → Execute as: Me → Access: Anyone → Deploy
+ * 6. Copy the web app URL and update SYNC_URL in AdminPage.jsx
  */
 
 const UPLOAD_FOLDER_ID = '1bYE7lE42KZTQ2Ki5jYghdu2Njx-2Nnug'
+const SHEET_ID = '1c_qGvb1jpfL5SZFeuRxKsQO4ddyPJlSFObsyFG4wItc'
 const SHEET_NAME = 'Sheet1'
 
 function onOpen() {
@@ -19,10 +21,25 @@ function onOpen() {
     .addToUi()
 }
 
+function doGet() {
+  try {
+    syncFromDrive_(SpreadsheetApp.openById(SHEET_ID))
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON)
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: e.message }))
+      .setMimeType(ContentService.MimeType.JSON)
+  }
+}
+
 function syncFromDrive() {
+  syncFromDrive_(SpreadsheetApp.getActiveSpreadsheet())
+}
+
+function syncFromDrive_(ss) {
   const folder = DriveApp.getFolderById(UPLOAD_FOLDER_ID)
   const files = folder.getFiles()
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME)
+  const sheet = ss.getSheetByName(SHEET_NAME)
   if (!sheet) return
 
   const existing = getExistingData(sheet)
@@ -34,7 +51,6 @@ function syncFromDrive() {
     const name = file.getName()
     const fileId = file.getId()
 
-    // Skip if already in sheet
     if (existing.some(r => r.gdrivePath === fileId)) continue
 
     maxId++

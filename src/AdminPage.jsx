@@ -4,6 +4,7 @@ import { Shield, LogOut, ExternalLink, RefreshCw, Loader, Upload } from 'lucide-
 
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQoaVGsNxKVjsjo1bWN-Yz6_ZSFFiqQYcME9zPwhUadOVjVTPwDRJIkLcTPbA_x-4Sm8W6zkQmLvBnk/pub?output=csv'
 const SHEET_EDIT_URL = 'https://docs.google.com/spreadsheets/d/1c_qGvb1jpfL5SZFeuRxKsQO4ddyPJlSFObsyFG4wItc/edit'
+const SYNC_URL = 'PASTE_YOUR_WEB_APP_URL_HERE' // ganti setelah deploy Apps Script
 
 const extractFileId = (input) => {
   if (!input) return input
@@ -50,6 +51,12 @@ export default function AdminPage({ onLogout }) {
   const loadData = async (silent) => {
     if (!silent) setLoading(true)
     else setRefreshing(true)
+
+    // Trigger Drive → Sheet sync when refreshing
+    if (silent && SYNC_URL && !SYNC_URL.startsWith('PASTE')) {
+      try { await fetch(SYNC_URL) } catch {}
+    }
+
     const data = await fetchSOPs()
     setSops(data)
     setLoading(false)
@@ -127,10 +134,10 @@ export default function AdminPage({ onLogout }) {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
           <p className="font-medium mb-1">Cara mengelola dokumen:</p>
           <ol className="list-decimal list-inside space-y-1 text-amber-700">
-            <li>Klik <strong>"Upload PDF"</strong> untuk upload file PDF ke folder <strong>uploaded</strong> di Google Drive</li>
-            <li>Buka Google Sheet → menu <strong>Document Portal → Sync from Drive</strong> untuk menarik daftar file baru</li>
+            <li>Klik <strong>"Upload PDF"</strong> untuk upload file ke folder Google Drive</li>
+            <li>Klik <strong>"Refresh"</strong> — otomatis menyinkronkan file baru ke spreadsheet</li>
             <li>Isi kolom <strong>category</strong> dan <strong>description</strong> di sheet jika diperlukan</li>
-            <li>Klik <strong>"Refresh"</strong> di sini untuk melihat perubahan</li>
+            <li>Klik <strong>"Refresh"</strong> lagi untuk melihat perubahan di portal</li>
           </ol>
         </div>
 
