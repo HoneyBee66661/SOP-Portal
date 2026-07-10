@@ -145,26 +145,14 @@ export default function UploadModal({ syncUrl, csvUrl, onClose, onUploadComplete
       setStatus('syncing')
       await new Promise((r) => setTimeout(r, 4000))
 
-      // 4. Trigger parent sync + refresh (AdminPage.loadData)
+      // 4. Parent handles optimistic UI + background polling
       if (onUploadComplete) {
-        await onUploadComplete()
+        await onUploadComplete(file.name)
       }
 
-      // 5. Verify: poll CSV until the uploaded file appears (handles caching)
-      setStatus('verifying')
-      const found = csvUrl && (await waitForFileInSheet(csvUrl, titleName))
-
-      if (!found) {
-        // Upload might have worked but CSV cache is slow.
-        // Don't show error — the data is refreshed in the table.
-        // But give a heads-up.
-        setStatus('success')
-        setTimeout(() => onClose(), 1500)
-        return
-      }
-
+      // 5. Done — modal closes, parent table already shows the file
       setStatus('success')
-      setTimeout(() => onClose(), 2500)
+      setTimeout(() => onClose(), 2000)
     } catch (err) {
       setError(err.message || 'Upload gagal.')
       setStatus('error')
