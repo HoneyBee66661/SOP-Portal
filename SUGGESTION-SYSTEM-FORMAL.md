@@ -29,8 +29,9 @@ Membangun **Document Portal**, yaitu portal dokumen berbasis web yang terintegra
 - Pencarian dokumen dapat dilakukan dengan cepat melalui fitur pencarian dan filter kategori.
 - Setiap dokumen dilengkapi **QR Code** yang dapat dipindai untuk akses instan.
 
-> **Teknologi yang digunakan:** React JS, Tailwind CSS, Google Drive API, Google Sheets (Apps Script), QR Code generator, Vite.
+> **Teknologi yang digunakan:** React JS, Tailwind CSS, Vite, Google Drive API, Google Sheets API, Vercel (serverless function), QR Code generator.
 > **Biaya operasional:** Rp 0 (Nol Rupiah) — seluruh infrastruktur menggunakan layanan gratis.
+> **Keamanan:** API dilindungi dengan autentikasi Bearer token — hanya admin yang terverifikasi dapat mengunggah, mengubah, atau menghapus dokumen.
 
 ---
 
