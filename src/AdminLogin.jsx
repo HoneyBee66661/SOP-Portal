@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Lock, ShieldAlert, Eye, EyeOff } from 'lucide-react'
+import { setAdminToken } from './lib.js'
 
 const MAX_ATTEMPTS = 5
 const LOCKOUT_DURATION = 30000 // 30 seconds
@@ -48,6 +49,7 @@ export default function AdminLogin({ onLogin }) {
       })
 
       if (res.ok) {
+        setAdminToken(password)
         onLogin()
       } else {
         const remaining = MAX_ATTEMPTS - attempts - 1

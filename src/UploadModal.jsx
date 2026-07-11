@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Upload, X, Check, AlertCircle, Loader, FileText } from 'lucide-react'
 import { readFileAsBase64, syncApi } from './lib.js'
 
-const MAX_SIZE = 30 * 1024 * 1024 // 30MB
+const MAX_SIZE = 3 * 1024 * 1024 // 3MB (Vercel serverless body limit ~4.5MB, base64 adds 37%)
 
 export default function UploadModal({ onClose, onUploadComplete }) {
   const [files, setFiles] = useState([])
@@ -43,7 +43,7 @@ export default function UploadModal({ onClose, onUploadComplete }) {
         return
       }
       if (f.size > MAX_SIZE) {
-        setError(`"${f.name}" terlalu besar. Maksimal 30MB.`)
+        setError(`"${f.name}" terlalu besar. Maksimal 3MB.`)
         setFiles([])
         return
       }
@@ -199,7 +199,7 @@ export default function UploadModal({ onClose, onUploadComplete }) {
                 <div>
                   <Upload size={40} className="text-muted mx-auto mb-2" />
                   <p className="font-medium text-secondary text-sm">Klik untuk pilih file PDF</p>
-                  <p className="text-xs text-muted mt-1">Maksimal 30MB per file, bisa pilih banyak</p>
+                  <p className="text-xs text-muted mt-1">Maksimal 3MB per file, bisa pilih banyak</p>
                 </div>
               )}
             </div>

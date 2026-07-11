@@ -16,10 +16,20 @@ function parseBody(req) {
   })
 }
 
+function isAdmin(req) {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return false
+  return auth.slice(7) === process.env.ADMIN_PASSWORD
+}
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const origin = req.headers.origin
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  res.setHeader('Vary', 'Origin')
 
   if (req.method === 'OPTIONS') {
     res.status(200).end()
@@ -38,6 +48,11 @@ export default async function handler(req, res) {
 
     if (req.method !== 'POST') {
       json(res, 405, { error: 'Method not allowed' })
+      return
+    }
+
+    if (!isAdmin(req)) {
+      json(res, 401, { success: false, error: 'Unauthorized' })
       return
     }
 
@@ -66,6 +81,6 @@ export default async function handler(req, res) {
     json(res, 200, result)
   } catch (err) {
     console.error('Sync error:', err)
-    json(res, 500, { success: false, error: err.message || 'Internal server error' })
+    json(res, 500, { success: false, error: 'Internal server error' })
   }
 }

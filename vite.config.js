@@ -71,6 +71,13 @@ export default defineConfig({
               return
             }
 
+            // Auth check — require Bearer token matching DEV_PASSWORD
+            const authHeader = req.headers.authorization
+            if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.slice(7) !== DEV_PASSWORD) {
+              json(res, 401, { success: false, error: 'Unauthorized' })
+              return
+            }
+
             const body = await parseBody(req)
             const { action } = body
 
@@ -96,7 +103,7 @@ export default defineConfig({
             json(res, 200, result)
           } catch (err) {
             console.error('Sync error:', err)
-            json(res, 500, { success: false, error: err.message || 'Internal server error' })
+            json(res, 500, { success: false, error: 'Internal server error' })
           }
         })
       },

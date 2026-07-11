@@ -18,11 +18,26 @@ export function readFileAsBase64(file) {
   })
 }
 
+// ── Admin auth token (set after login, sent with mutations) ────
+let _adminToken = null
+
+export function setAdminToken(token) {
+  _adminToken = token
+}
+
+export function clearAdminToken() {
+  _adminToken = null
+}
+
 // ── API helpers ────────────────────────────────────────────────
 export async function syncApi(action, params = {}) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (_adminToken) {
+    headers['Authorization'] = 'Bearer ' + _adminToken
+  }
   const res = await fetch(SYNC_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ action, ...params }),
   })
   if (!res.ok) {
