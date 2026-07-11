@@ -40,9 +40,9 @@ function QRCardPrint({ title, subtitle, url, id }) {
   return (
     <div className="flex flex-col items-center">
       {/* Card preview */}
-      <div className="bg-white rounded-2xl shadow-lg p-8 flex flex-col items-center border border-gray-200 w-80">
-        <p className="text-lg font-bold text-gray-800 mb-1">{title}</p>
-        <p className="text-xs text-gray-500 mb-6">{subtitle}</p>
+      <div className="bg-surface rounded-2xl shadow-lg p-8 flex flex-col items-center border border-border w-80">
+        <p className="text-lg font-bold text-primary mb-1">{title}</p>
+        <p className="text-xs text-secondary mb-6">{subtitle}</p>
         <div ref={svgRef}>
           <QRCodeSVG
             value={url}
@@ -53,14 +53,14 @@ function QRCardPrint({ title, subtitle, url, id }) {
             includeMargin
           />
         </div>
-        <p className="text-[10px] text-gray-400 mt-4 break-all text-center max-w-full">
+        <p className="text-[10px] text-muted mt-4 break-all text-center max-w-full">
           {url}
         </p>
       </div>
 
       <button
         onClick={downloadPNG}
-        className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition text-sm"
+        className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-hover text-white font-medium rounded-xl transition text-sm"
       >
         <Download size={16} />
         Download Hi-Res PNG
@@ -75,24 +75,24 @@ export default function QRPrintPage() {
   const adminUrl = baseUrl + '/admin'
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-hover">
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Printable QR Codes</h1>
-            <p className="text-sm text-gray-500">Download hi-res PNGs for card printing</p>
+            <h1 className="text-2xl font-bold text-primary">Printable QR Codes</h1>
+            <p className="text-sm text-secondary">Download hi-res PNGs for card printing</p>
           </div>
           <div className="flex gap-2">
             <a
               href="/"
-              className="px-4 py-2 bg-white border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 transition"
+              className="px-4 py-2 bg-surface border border-border rounded-xl text-sm font-medium hover:bg-surface-hover transition"
             >
               ← Back to Portal
             </a>
             <button
               onClick={() => window.print()}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-xl text-sm font-medium transition"
+              className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent text-white rounded-xl text-sm font-medium transition"
             >
               <Printer size={16} />
               Print
@@ -117,8 +117,8 @@ export default function QRPrintPage() {
         </div>
 
         {/* Print info */}
-        <div className="mt-12 bg-white rounded-xl border border-gray-200 p-6 text-sm text-gray-600">
-          <h2 className="font-semibold text-gray-800 mb-2">Print Tips</h2>
+        <div className="mt-12 bg-surface rounded-xl border border-border p-6 text-sm text-secondary">
+          <h2 className="font-semibold text-primary mb-2">Print Tips</h2>
           <ul className="space-y-1 list-disc list-inside">
             <li>Click <strong>Download Hi-Res PNG</strong> for individual 1200×1200px images</li>
             <li>Click <strong>Print</strong> to print both cards directly</li>

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Shield, LogOut, ExternalLink, RefreshCw, Loader, Upload, Check, Clock, Trash2, GripVertical } from 'lucide-react'
+import { LogOut, ExternalLink, RefreshCw, Loader, Upload, Check, Clock, Trash2, GripVertical, ChevronDown } from 'lucide-react'
 import UploadModal from './UploadModal.jsx'
-import { SHEET_CSV_URL, SHEET_EDIT_URL, SYNC_URL, extractFileId, fetchSOPs, postViaIframe, readFileAsBase64 } from './lib.js'
+import ConfirmDialog from './ConfirmDialog.jsx'
+import { SHEET_CSV_URL, SHEET_EDIT_URL, extractFileId, fetchSOPsFresh, syncApi, readFileAsBase64 } from './lib.js'
 
 export default function AdminPage({ onLogout }) {
   const [sops, setSops] = useState([])
@@ -12,21 +13,42 @@ export default function AdminPage({ onLogout }) {
   const [uploadMsg, setUploadMsg] = useState(null)
   const [optimisticFiles, setOptimisticFiles] = useState([])
   const [rowOrder, setRowOrder] = useState([])
-  const [dragIdx, setDragIdx] = useState(null)
+  const [dragId, setDragId] = useState(null)
   const [deletingIds, setDeletingIds] = useState([])
   const [updatingId, setUpdatingId] = useState(null)
   const updatingIdRef = useRef(null)
   const updateInputRef = useRef(null)
+  const mountedRef = useRef(true)
+  const filePickerOpenRef = useRef(false)
+  const [showMore, setShowMore] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const pendingDeleteRef = useRef(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  // Detect file picker dialog closure via window focus
+  useEffect(() => {
+    const handler = () => {
+      if (!filePickerOpenRef.current) return
+      filePickerOpenRef.current = false
+      if (updatingIdRef.current) {
+        updatingIdRef.current = null
+        setUpdatingId(null)
+        if (updateInputRef.current) updateInputRef.current.value = ''
+      }
+    }
+    window.addEventListener('focus', handler)
+    return () => window.removeEventListener('focus', handler)
+  }, [])
 
   const loadData = useCallback(async (silent) => {
     if (!silent) setLoading(true)
     else setRefreshing(true)
 
-    if (silent && SYNC_URL && !SYNC_URL.startsWith('PASTE')) {
-      try { await fetch(SYNC_URL) } catch {}
-    }
-
-    const data = await fetchSOPs()
+    const data = await fetchSOPsFresh()
     setSops(data)
     setLoading(false)
     setRefreshing(false)
@@ -59,8 +81,15 @@ export default function AdminPage({ onLogout }) {
     ;(async () => {
       for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 5000))
+        if (!mountedRef.current) return
         try { await fetch(SYNC_URL) } catch {}
-        const data = await fetchSOPs()
+        let data
+        try {
+          data = await fetchSOPsFresh()
+        } catch {
+          continue
+        }
+        if (!mountedRef.current) return
         if (titles.every(t => data.some(d => d.title === t))) {
           setSops(data)
           setOptimisticFiles((prev) => prev.filter(f => !titles.includes(f)))
@@ -69,6 +98,7 @@ export default function AdminPage({ onLogout }) {
           return
         }
       }
+      if (!mountedRef.current) return
       // After 5 min still not found — keep entries, warn user to refresh manually
       setUploadMsg({
         type: 'error',
@@ -78,30 +108,64 @@ export default function AdminPage({ onLogout }) {
     })()
   }
 
-  const handleDelete = async (sop) => {
-    if (!window.confirm(`Hapus "${sop.title}"?`)) return
-    setDeletingIds(prev => [...prev, sop.id])
-    setSops(prev => prev.filter(s => s.id !== sop.id))
+  const handleDelete = (sop) => {
+    setPendingDelete(sop)
+    pendingDeleteRef.current = sop
+  }
 
-    await postViaIframe(SYNC_URL, {
-      action: 'delete',
-      fileId: sop.gdrivePath,
+  const confirmDelete = async () => {
+    const sop = pendingDeleteRef.current
+    setPendingDelete(null)
+    pendingDeleteRef.current = null
+    if (!sop) return
+
+    setDeletingIds(prev => [...prev, sop.id])
+
+    await syncApi('delete', {
+      fileId: extractFileId(sop.gdrivePath),
       rowId: sop.id,
     })
 
+    // Poll CSV until row is confirmed gone (handle stale cache)
+    let confirmed = false
+    for (let i = 0; i < 3; i++) {
+      await new Promise(r => setTimeout(r, 5000))
+      const data = await fetchSOPsFresh()
+      if (!data.some(s => s.id === sop.id)) {
+        confirmed = true
+        break
+      }
+    }
+
     setDeletingIds(prev => prev.filter(id => id !== sop.id))
-    loadData(true)
+
+    if (confirmed) {
+      setSops(prev => prev.filter(s => s.id !== sop.id))
+    } else {
+      setUploadMsg({
+        type: 'error',
+        text: `Gagal menghapus "${sop.title}". Data mungkin masih tersimpan di sheet. Klik Refresh atau coba lagi.`,
+      })
+      setTimeout(() => setUploadMsg(null), 10000)
+    }
+  }
+
+  const cancelDelete = () => {
+    setPendingDelete(null)
+    pendingDeleteRef.current = null
   }
 
   const handleUpdateClick = (sop) => {
     setUpdatingId(sop.gdrivePath)
     updatingIdRef.current = sop.gdrivePath
+    filePickerOpenRef.current = true
     updateInputRef.current?.click()
   }
 
   const handleUpdateFile = async (e) => {
     const file = e.target.files?.[0]
-    if (!file || !updatingId) return
+    const fileIdFromRef = updatingIdRef.current
+    if (!file || !fileIdFromRef) return
     if (file.type !== 'application/pdf') {
       setUploadMsg({ type: 'error', text: `"${file.name}" bukan file PDF` })
       setTimeout(() => setUploadMsg(null), 4000)
@@ -116,9 +180,8 @@ export default function AdminPage({ onLogout }) {
     updatingIdRef.current = null
     if (updateInputRef.current) updateInputRef.current.value = ''
 
-    await postViaIframe(SYNC_URL, {
-      action: 'update',
-      fileId: updatingId, // Actually old fileId to replace
+    await syncApi('update', {
+      fileId: fileIdFromRef,
       fileName: file.name,
       fileData: base64,
     })
@@ -128,31 +191,36 @@ export default function AdminPage({ onLogout }) {
 
   // ── Drag-and-drop ──
 
-  const handleDragStart = (idx) => {
-    setDragIdx(idx)
+  const handleDragStart = (sopId) => {
+    setDragId(sopId)
   }
 
   const handleDragOver = (e) => {
     e.preventDefault()
   }
 
-  const handleDrop = (idx) => {
-    if (dragIdx === null || dragIdx === idx) {
-      setDragIdx(null)
+  const handleDrop = (targetId) => {
+    if (dragId === null || dragId === targetId) {
+      setDragId(null)
+      return
+    }
+
+    const fromIdx = rowOrder.indexOf(dragId)
+    const toIdx = rowOrder.indexOf(targetId)
+    if (fromIdx === -1 || toIdx === -1) {
+      setDragId(null)
       return
     }
 
     const reordered = [...rowOrder]
-    const [moved] = reordered.splice(dragIdx, 1)
-    reordered.splice(idx, 0, moved)
+    const [moved] = reordered.splice(fromIdx, 1)
+    const adjustedTo = toIdx > fromIdx ? toIdx - 1 : toIdx
+    reordered.splice(adjustedTo, 0, moved)
     setRowOrder(reordered)
-    setDragIdx(null)
+    setDragId(null)
 
     // Fire reorder to server
-    postViaIframe(SYNC_URL, {
-      action: 'reorder',
-      order: JSON.stringify(reordered),
-    })
+    syncApi('reorder', { order: JSON.stringify(reordered) })
   }
 
   // Merge real data with optimistic (syncing) entries, sorted by rowOrder
@@ -178,42 +246,45 @@ export default function AdminPage({ onLogout }) {
     return [...ordered, ...syncing]
   }, [sops, optimisticFiles, rowOrder, deletingIds])
 
-  const totalSyncing = optimisticFiles.length - sops.some(s => optimisticFiles.includes(s.title))
+  const sopTitles = new Set(sops.map(s => s.title))
+  const totalSyncing = optimisticFiles.filter(t => !sopTitles.has(t)).length
 
   const getQRValue = (gdrivePath) =>
     `https://drive.google.com/file/d/${extractFileId(gdrivePath)}/view`
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-page to-primary-wash/40 flex items-center justify-center">
         <div className="text-center">
-          <Loader size={32} className="animate-spin text-indigo-600 mx-auto mb-3" />
-          <p className="text-gray-500">Loading SOPs...</p>
+          <Loader size={32} className="animate-spin text-primary mx-auto mb-3" />
+          <p className="text-secondary">Loading SOPs...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-br from-page to-primary-wash/40">
       <div className="max-w-6xl mx-auto p-4">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6 pt-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Admin Panel</h1>
-            <p className="text-gray-600 text-sm">Data tersinkron dari Google Sheets</p>
+            <h1 className="text-3xl font-bold text-primary">Admin Panel</h1>
+            <p className="text-secondary text-sm">Data tersinkron dari Google Sheets</p>
           </div>
-          <div className="flex gap-2">
+
+          {/* Desktop toolbar */}
+          <div className="hidden sm:flex gap-2">
             <button
               onClick={() => loadData(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-xl hover:bg-surface-hover transition text-sm font-medium"
             >
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
               Refresh
             </button>
             <button
               onClick={() => setShowUploadModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-success hover:bg-success/90 text-white rounded-xl transition text-sm font-medium"
             >
               <Upload size={16} />
               Upload PDF
@@ -222,24 +293,80 @@ export default function AdminPage({ onLogout }) {
               href={SHEET_EDIT_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition text-sm font-medium"
             >
               <ExternalLink size={16} />
               Edit in Google Sheets
             </a>
             <a
               href="/"
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-xl hover:bg-surface-hover transition text-sm font-medium"
             >
               View Portal
             </a>
             <button
               onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-200 rounded-xl hover:bg-gray-300 transition text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-border rounded-xl hover:bg-accent-light transition text-sm font-medium"
             >
               <LogOut size={16} />
               Logout
             </button>
+          </div>
+
+          {/* Mobile toolbar */}
+          <div className="flex sm:hidden gap-1.5">
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-success hover:bg-success/90 text-white rounded-xl transition text-xs font-medium"
+            >
+              <Upload size={14} />
+              Upload
+            </button>
+            <a
+              href={SHEET_EDIT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition text-xs font-medium"
+            >
+              <ExternalLink size={14} />
+              Sheet
+            </a>
+            <div className="relative">
+              <button
+                onClick={() => setShowMore(!showMore)}
+                className="flex items-center gap-1 px-3 py-2 bg-surface border border-border rounded-xl hover:bg-surface-hover transition text-xs font-medium"
+              >
+                More
+                <ChevronDown size={14} className={`transition-transform ${showMore ? 'rotate-180' : ''}`} />
+              </button>
+              {showMore && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowMore(false)} />
+                  <div className="absolute right-0 top-full mt-1 bg-surface shadow-xl rounded-xl border border-border p-1.5 z-50 min-w-[160px]">
+                    <button
+                      onClick={() => { loadData(true); setShowMore(false) }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-primary hover:bg-surface-hover rounded-lg transition"
+                    >
+                      <RefreshCw size={14} /> Refresh
+                    </button>
+                    <a
+                      href="/"
+                      onClick={() => setShowMore(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-primary hover:bg-surface-hover rounded-lg transition"
+                    >
+                      View Portal
+                    </a>
+                    <hr className="my-1 border-border-light" />
+                    <button
+                      onClick={() => { onLogout(); setShowMore(false) }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-destructive hover:bg-destructive-light rounded-lg transition"
+                    >
+                      <LogOut size={14} /> Logout
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -247,9 +374,9 @@ export default function AdminPage({ onLogout }) {
         {uploadMsg && (
           <div className={`flex items-center gap-2 px-4 py-3 rounded-xl mb-4 text-sm font-medium ${
             uploadMsg.type === 'success'
-              ? 'bg-green-50 border border-green-200 text-green-700'
-              : 'bg-red-50 border border-red-200 text-red-700'
-          }`}>
+              ? 'bg-success-light border border-success-light text-success'
+              : 'bg-destructive-light border border-destructive-light text-destructive'
+          }`} role="status" aria-live="polite">
             {uploadMsg.type === 'success' ? <Check size={16} /> : null}
             {uploadMsg.text}
           </div>
@@ -257,16 +384,16 @@ export default function AdminPage({ onLogout }) {
 
         {/* Syncing progress bar */}
         {totalSyncing > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 flex items-center gap-3 text-sm text-blue-700">
+          <div className="bg-info-bg border border-info-border rounded-xl p-3 mb-4 flex items-center gap-3 text-sm text-info-text" role="status" aria-live="polite">
             <Loader size={16} className="animate-spin flex-shrink-0" />
             <span>Menyinkronkan {totalSyncing} file ke spreadsheet...</span>
           </div>
         )}
 
         {/* Info card */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-800">
+        <div className="bg-warning-bg border border-warning-border rounded-xl p-4 mb-6 text-sm text-warning-text">
           <p className="font-medium mb-1">Cara mengelola dokumen:</p>
-          <ol className="list-decimal list-inside space-y-1 text-amber-700">
+          <ol className="list-decimal list-inside space-y-1 text-warning-text">
             <li>Klik <strong>"Upload PDF"</strong> dan pilih file — upload langsung dari sini</li>
             <li>File otomatis tersimpan ke Drive dan tersinkron ke spreadsheet</li>
             <li>Edit kolom <strong>category</strong> dan <strong>description</strong> di sheet jika diperlukan</li>
@@ -276,24 +403,24 @@ export default function AdminPage({ onLogout }) {
         </div>
 
         {/* SOP Table */}
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+        <div className="bg-surface rounded-xl shadow-md overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-surface-hover border-b">
                 <tr>
                   <th className="w-8 px-1 py-3"></th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">#</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Title</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Category</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">File ID</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">QR Code</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Actions</th>
+                  <th className="text-left px-4 py-3 font-semibold text-primary">#</th>
+                  <th className="text-left px-4 py-3 font-semibold text-primary">Title</th>
+                  <th className="text-left px-4 py-3 font-semibold text-primary">Category</th>
+                  <th className="text-left px-4 py-3 font-semibold text-primary">File ID</th>
+                  <th className="text-left px-4 py-3 font-semibold text-primary">QR Code</th>
+                  <th className="text-left px-4 py-3 font-semibold text-primary">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border">
                 {displaySops.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12 text-gray-500">
+                    <td colSpan={7} className="text-center py-12 text-secondary">
                       Belum ada SOP di sheet. Tambahkan entri baru.
                     </td>
                   </tr>
@@ -302,61 +429,61 @@ export default function AdminPage({ onLogout }) {
                     <tr
                       key={sop._syncing ? sop.id : `sop-${sop.id}`}
                       draggable={!sop._syncing}
-                      onDragStart={() => handleDragStart(idx)}
+                      onDragStart={() => handleDragStart(sop.id)}
                       onDragOver={handleDragOver}
-                      onDrop={() => handleDrop(idx)}
+                      onDrop={() => handleDrop(sop.id)}
                       className={`transition ${
-                        sop._syncing ? 'opacity-60' : 'hover:bg-gray-50 cursor-default'
-                      } ${dragIdx === idx ? 'opacity-50 bg-indigo-50' : ''}`}
+                        sop._syncing ? 'opacity-60' : 'hover:bg-surface-hover cursor-default'
+                      } ${dragId === sop.id ? 'opacity-50 bg-primary-wash' : ''}`}
                     >
-                      <td className="px-1 py-3 text-gray-400">
+                      <td className="px-1 py-3 text-muted">
                         {!sop._syncing && (
-                          <span className="cursor-grab active:cursor-grabbing inline-flex">
+                          <span className="cursor-grab active:cursor-grabbing inline-flex" role="button" tabIndex={0} aria-label="Urutkan baris">
                             <GripVertical size={16} />
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="px-4 py-3 text-secondary">
                         {sop._syncing ? (
-                          <Loader size={14} className="animate-spin text-blue-500" />
+                          <Loader size={14} className="animate-spin text-info-text" />
                         ) : deletingIds.includes(sop.id) ? (
-                          <Loader size={14} className="animate-spin text-red-500" />
+                          <Loader size={14} className="animate-spin text-destructive-hover" />
                         ) : (
-                          sop.id
+                          idx + 1
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-gray-800 flex items-center gap-2">
+                        <div className="font-medium text-primary flex items-center gap-2">
                           {sop.title}
                           {sop._syncing && (
-                            <span className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 text-xs bg-primary-light text-info-text px-2 py-0.5 rounded-full">
                               <Clock size={10} />
                               syncing
                             </span>
                           )}
                           {updatingId === sop.gdrivePath && (
-                            <span className="inline-flex items-center gap-1 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 text-xs bg-warning-bg text-warning-text px-2 py-0.5 rounded-full">
                               <Loader size={10} className="animate-spin" />
                               updating
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-gray-500 mt-0.5">{sop.description}</div>
+                        <div className="text-xs text-secondary mt-0.5">{sop.description}</div>
                       </td>
                       <td className="px-4 py-3">
                         {sop._syncing ? (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-muted">—</span>
                         ) : (
-                          <span className="inline-block bg-indigo-100 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+                          <span className="inline-block bg-primary-light text-primary text-xs font-semibold px-2.5 py-1 rounded-full">
                             {sop.category}
                           </span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         {sop._syncing ? (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-muted">—</span>
                         ) : (
-                          <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">
+                          <code className="text-xs bg-border-light px-2 py-1 rounded font-mono">
                             {extractFileId(sop.gdrivePath).length > 20
                               ? extractFileId(sop.gdrivePath).slice(0, 20) + '...'
                               : extractFileId(sop.gdrivePath)}
@@ -365,8 +492,8 @@ export default function AdminPage({ onLogout }) {
                       </td>
                       <td className="px-4 py-3">
                         {sop._syncing ? (
-                          <div className="w-[40px] h-[40px] bg-gray-100 rounded flex items-center justify-center">
-                            <Loader size={14} className="animate-spin text-gray-400" />
+                          <div className="w-[40px] h-[40px] bg-border-light rounded flex items-center justify-center">
+                            <Loader size={14} className="animate-spin text-muted" />
                           </div>
                         ) : (
                           <QRCodeSVG value={getQRValue(sop.gdrivePath)} size={40} level="H" />
@@ -378,16 +505,18 @@ export default function AdminPage({ onLogout }) {
                             <button
                               onClick={() => handleUpdateClick(sop)}
                               disabled={updatingId !== null}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-40"
-                              title="Update file (ganti dengan versi baru)"
+                              className="p-2.5 text-primary hover:bg-info-bg rounded-lg transition disabled:opacity-40 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                              title="Ganti file dengan versi baru"
+                              aria-label={`Ganti file ${sop.title}`}
                             >
-                              <Upload size={16} />
+                              <RefreshCw size={16} />
                             </button>
                             <button
                               onClick={() => handleDelete(sop)}
                               disabled={deletingIds.includes(sop.id)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-40"
+                              className="p-2.5 text-destructive hover:bg-destructive-light rounded-lg transition disabled:opacity-40 min-w-[44px] min-h-[44px] flex items-center justify-center"
                               title="Hapus"
+                              aria-label={`Hapus ${sop.title}`}
                             >
                               {deletingIds.includes(sop.id) ? (
                                 <Loader size={16} className="animate-spin" />
@@ -412,21 +541,14 @@ export default function AdminPage({ onLogout }) {
           type="file"
           accept=".pdf"
           onChange={handleUpdateFile}
-          onBlur={() => {
-            if (updatingIdRef.current && !updateInputRef.current?.files?.length) {
-              updatingIdRef.current = null
-              setUpdatingId(null)
-              if (updateInputRef.current) updateInputRef.current.value = ''
-            }
-          }}
           className="hidden"
         />
 
         {/* Stats */}
-        <div className="mt-4 text-sm text-gray-500 text-center">
+        <div className="mt-4 text-sm text-secondary text-center">
           Total: {sops.length} SOP
           {totalSyncing > 0 && (
-            <span className="text-blue-500 ml-1">
+            <span className="text-info-text ml-1">
               (+{totalSyncing} menyinkronkan)
             </span>
           )}
@@ -434,9 +556,15 @@ export default function AdminPage({ onLogout }) {
       </div>
       {showUploadModal && (
         <UploadModal
-          syncUrl={SYNC_URL}
           onClose={() => setShowUploadModal(false)}
           onUploadComplete={handleUploadComplete}
+        />
+      )}
+      {pendingDelete && (
+        <ConfirmDialog
+          message={`Hapus "${pendingDelete.title}"?`}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
         />
       )}
     </div>

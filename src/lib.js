@@ -5,9 +5,8 @@ export const SHEET_CSV_URL =
 export const SHEET_EDIT_URL =
   'https://docs.google.com/spreadsheets/d/1c_qGvb1jpfL5SZFeuRxKsQO4ddyPJlSFObsyFG4wItc/edit'
 
-// ── Google Apps Script Web App ─────────────────────────────────
-export const SYNC_URL =
-  'https://script.google.com/macros/s/AKfycbyjl28sV18l_KiiC46NWy0bQVLiCFk5AKzuYUWLypoZt4tXrvGr8pk7phw6bTHxhrJoxg/exec'
+// ── API endpoint (same-origin Vercel serverless function) ──────
+export const SYNC_URL = '/api/sync'
 
 // ── File helpers ───────────────────────────────────────────────
 export function readFileAsBase64(file) {
@@ -19,41 +18,18 @@ export function readFileAsBase64(file) {
   })
 }
 
-/**
- * POST form data to a cross-origin URL via hidden iframe.
- * Apps Script web apps don't return CORS headers, so iframe is the only way.
- * Resolves after a fixed delay — response is unreadable (cross-origin).
- */
-export function postViaIframe(url, params) {
-  return new Promise((resolve) => {
-    const iframeName = 'frame-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)
-    const iframe = document.createElement('iframe')
-    iframe.name = iframeName
-    iframe.style.display = 'none'
-    document.body.appendChild(iframe)
-
-    const form = document.createElement('form')
-    form.method = 'POST'
-    form.action = url
-    form.target = iframeName
-
-    for (const [key, val] of Object.entries(params)) {
-      const input = document.createElement('input')
-      input.type = 'hidden'
-      input.name = key
-      input.value = val
-      form.appendChild(input)
-    }
-
-    document.body.appendChild(form)
-    form.submit()
-
-    setTimeout(() => {
-      if (form.parentNode) form.parentNode.removeChild(form)
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
-      resolve()
-    }, 3000)
+// ── API helpers ────────────────────────────────────────────────
+export async function syncApi(action, params = {}) {
+  const res = await fetch(SYNC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...params }),
   })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(err.error || `Request failed (${res.status})`)
+  }
+  return res.json()
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -71,6 +47,31 @@ export function getGDriveDownload(fileId) {
   return `https://drive.google.com/uc?export=download&id=${extractFileId(fileId)}`
 }
 
+// ── Quote-aware CSV line parser ───────────────────────────────
+function parseCSVLine(line) {
+  const result = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    if (char === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        current += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+
 // ── Data ───────────────────────────────────────────────────────
 export async function fetchSOPs() {
   try {
@@ -79,11 +80,11 @@ export async function fetchSOPs() {
     const lines = csv.trim().split('\n')
     if (lines.length < 2) return []
 
-    const headers = lines[0].split(',').map((h) => h.trim())
+    const headers = parseCSVLine(lines[0])
     const items = []
 
     for (let i = 1; i < lines.length; i++) {
-      const vals = lines[i].split(',').map((v) => v.trim())
+      const vals = parseCSVLine(lines[i])
       const entry = {}
       headers.forEach((h, idx) => {
         entry[h] = vals[idx] || ''
@@ -105,5 +106,25 @@ export async function fetchSOPs() {
       } catch {}
     }
     return []
+  }
+}
+
+/**
+ * Fetch SOP data directly from the Vercel API (live data via Google Sheets API).
+ * Falls back to CSV if the API request fails.
+ */
+export async function fetchSOPsFresh() {
+  try {
+    const res = await fetch(SYNC_URL, { method: 'GET' })
+    if (!res.ok) throw new Error('API request failed: ' + res.status)
+    const json = await res.json()
+    if (json.success && Array.isArray(json.data)) {
+      localStorage.setItem('document-portal-cache', JSON.stringify(json.data))
+      return json.data
+    }
+    throw new Error('Unexpected response format from API')
+  } catch (e) {
+    console.warn('fetchSOPsFresh failed, falling back to CSV:', e.message)
+    return fetchSOPs()
   }
 }
