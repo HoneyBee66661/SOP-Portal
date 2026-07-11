@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText, Loader, RefreshCw } from 'lucide-react'
-import { extractFileId, getGDriveUrl, getGDriveDownload, fetchSOPs } from './src/lib.js'
+import { extractFileId, getGDriveUrl, getGDriveDownload, fetchSOPsFresh } from './src/lib.js'
 
 function PortalQRCard({ label, url, sub }) {
   const [copied, setCopied] = useState(false)
@@ -258,7 +258,7 @@ export default function DocumentPortal() {
   const [selectedCategory, setSelectedCategory] = useState('all')
 
   useEffect(() => {
-    fetchSOPs().then(data => {
+    fetchSOPsFresh().then(data => {
       setSopData(data)
       setLoading(false)
     }).catch((err) => {
@@ -270,7 +270,7 @@ export default function DocumentPortal() {
   const handleRetry = () => {
     setLoading(true)
     setFetchError(null)
-    fetchSOPs().then(data => {
+    fetchSOPsFresh().then(data => {
       setSopData(data)
       setLoading(false)
     }).catch((err) => {
