@@ -347,13 +347,13 @@ export default function DocumentPortal() {
           <img
             src={companyLogo}
             alt="Company Logo"
-            className="h-11 w-auto mx-auto mb-6"
+            className="w-full sm:w-1/2 max-w-lg h-auto mx-auto mb-6"
           />
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-50 text-company-red border border-red-100 rounded-full text-xs font-semibold mb-4 shadow-sm">
             <Shield size={12} />
             Company Documents
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-primary tracking-tight mb-2">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-gradient-to-r from-company-red via-company-blue to-company-blue bg-clip-text tracking-tight mb-2">
             Document Portal
           </h1>
           <div className="w-16 h-0.5 bg-company-red/40 mx-auto rounded-full mb-4" />
