@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText, Loader, RefreshCw } from 'lucide-react'
 import { extractFileId, getGDriveUrl, getGDriveDownload, fetchSOPsFresh } from './src/lib.js'
+import companyLogo from './company logo.png'
 
 function PortalQRCard({ label, url, sub }) {
   const [copied, setCopied] = useState(false)
@@ -47,10 +48,10 @@ function PortalQRCard({ label, url, sub }) {
   }
 
   return (
-    <div className="bg-surface rounded-xl border border-border p-4 shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-surface rounded-xl border border-border p-4 shadow-sm hover:shadow-md hover:shadow-company-red/10 hover:border-company-red/20 transition-all">
       <div className="flex items-center gap-4 mb-3">
         <div className="bg-surface-hover rounded-lg p-2 flex-shrink-0" ref={svgRef}>
-          <QRCodeSVG value={url} size={72} level="H" fgColor="#4f46e5" bgColor="#f9fafb" />
+          <QRCodeSVG value={url} size={72} level="H" fgColor="#000000" bgColor="#ffffff" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-primary text-sm">{label}</p>
@@ -61,20 +62,20 @@ function PortalQRCard({ label, url, sub }) {
         <div className="flex gap-3">
           <button
             onClick={handleCopy}
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition"
+            className="inline-flex items-center gap-1 text-xs font-medium text-company-red hover:text-company-red/80 transition"
           >
             {copied ? <><Check size={14} className="text-success" /> Copied</> : <><Link size={14} /> Copy</>}
           </button>
           <button
             onClick={handleShare}
-            className="inline-flex items-center gap-1 text-xs font-medium text-secondary hover:text-primary transition"
+            className="inline-flex items-center gap-1 text-xs font-medium text-secondary hover:text-company-red transition"
           >
             <Share2 size={14} /> Share
           </button>
         </div>
         <button
           onClick={downloadQRPNG}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-hover transition"
+          className="inline-flex items-center gap-1 text-xs font-medium text-company-red hover:text-company-red/80 transition"
           title="Download QR Code as PNG (printable)"
         >
           <Download size={14} /> QR PNG
@@ -129,7 +130,7 @@ function ShareModal({ sop, onClose }) {
         <div className="flex gap-2">
           <button
             onClick={handleCopy}
-            className="flex-1 flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-medium py-2.5 rounded-xl transition text-sm"
+            className="flex-1 flex items-center justify-center gap-2 bg-company-red hover:bg-company-red/90 text-white font-medium py-2.5 rounded-xl transition-all text-sm shadow-md shadow-company-blue/25 hover:shadow-lg hover:shadow-company-red/20"
           >
             {copied ? <Check size={16} /> : <Link size={16} />}
             {copied ? 'Copied!' : 'Copy Link'}
@@ -184,7 +185,7 @@ function PDFViewer({ sop, onClose }) {
             href={getGDriveUrl(sop.gdrivePath)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white font-medium rounded-xl transition text-sm"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-company-red hover:bg-company-red/90 text-white font-medium rounded-xl transition-all text-sm shadow-md shadow-company-blue/25 hover:shadow-lg hover:shadow-company-red/20"
           >
             <ExternalLink size={16} />
             Open Full Screen
@@ -203,8 +204,8 @@ function PDFViewer({ sop, onClose }) {
 
 function SOPCard({ sop, onView, onShare }) {
   return (
-    <div className="group bg-surface rounded-xl border border-border shadow-sm hover:shadow-lg hover:border-primary-light transition-all duration-200 flex flex-col">
-      <div className="h-1.5 bg-gradient-to-r from-gradient-from to-gradient-to rounded-t-xl" />
+    <div className="group bg-surface rounded-xl border border-border shadow-sm hover:shadow-xl hover:shadow-company-red/10 hover:border-company-red/25 transition-all duration-300 flex flex-col animate-fade-in-up">
+      <div className="h-1 bg-gradient-to-r from-company-red via-company-blue to-company-blue rounded-t-xl" />
 
       <div className="p-5 flex flex-col flex-1">
         <div className="mb-3">
@@ -213,20 +214,20 @@ function SOPCard({ sop, onView, onShare }) {
           </span>
         </div>
 
-        <h3 className="font-bold text-primary text-lg leading-tight mb-1.5">{sop.title}</h3>
+        <h3 className="font-semibold text-primary text-lg leading-tight mb-1.5">{sop.title}</h3>
         <p className="text-sm text-secondary leading-relaxed mb-5 flex-1">{sop.description}</p>
 
         <div className="flex items-center gap-2 pt-3 border-t border-border-light">
           <button
             onClick={() => onView(sop)}
-            className="flex-1 flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium py-2.5 rounded-xl transition active:scale-[0.98]"
+            className="flex-1 flex items-center justify-center gap-2 bg-company-red hover:bg-company-red/90 text-white text-sm font-medium py-2.5 rounded-xl transition-all shadow-md shadow-company-blue/25 hover:shadow-lg hover:shadow-company-red/20 active:scale-[0.97]"
           >
             <FileText size={16} />
             View PDF
           </button>
           <button
             onClick={() => onShare(sop)}
-            className="flex items-center justify-center p-2.5 text-secondary hover:text-primary hover:bg-primary-wash rounded-xl transition"
+            className="flex items-center justify-center p-2.5 text-secondary hover:text-company-red hover:bg-company-red/5 rounded-xl transition"
             title="Share"
             aria-label={`Bagikan ${sop.title}`}
           >
@@ -236,7 +237,7 @@ function SOPCard({ sop, onView, onShare }) {
             href={getGDriveDownload(sop.gdrivePath)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center p-2.5 text-secondary hover:text-primary hover:bg-primary-wash rounded-xl transition"
+            className="flex items-center justify-center p-2.5 text-secondary hover:text-company-red hover:bg-company-red/5 rounded-xl transition"
             title="Download PDF"
             aria-label={`Unduh ${sop.title}`}
           >
@@ -329,15 +330,21 @@ export default function DocumentPortal() {
     <div className="min-h-screen bg-gradient-to-b from-page to-primary-wash/40">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         {/* Header */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-light text-primary rounded-full text-xs font-semibold mb-4">
+        <div className="text-center mb-12">
+          <img
+            src={companyLogo}
+            alt="Company Logo"
+            className="h-11 w-auto mx-auto mb-6"
+          />
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-50 text-company-red border border-red-100 rounded-full text-xs font-semibold mb-4 shadow-sm">
             <Shield size={12} />
             Company Documents
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-primary tracking-tight mb-3">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-primary tracking-tight mb-2">
             Document Portal
           </h1>
-          <p className="text-secondary text-base sm:text-lg max-w-md mx-auto">
+          <div className="w-16 h-0.5 bg-company-red/40 mx-auto rounded-full mb-4" />
+          <p className="text-secondary text-base sm:text-lg max-w-md mx-auto leading-relaxed">
             Easy access to company documents and procedures across your organization
           </p>
         </div>
@@ -348,13 +355,13 @@ export default function DocumentPortal() {
             <PortalQRCard label="Portal Access" url={portalUrl} sub="Scan to open Document Portal" />
             <a
               href="/admin"
-              className="bg-surface rounded-xl border border-border p-4 shadow-sm hover:shadow-md hover:border-primary-light transition-all flex items-center justify-between group"
+              className="bg-surface rounded-xl border border-border p-4 shadow-sm hover:shadow-md hover:shadow-company-red/10 hover:border-company-red/20 transition-all flex items-center justify-between group"
             >
               <div>
                 <p className="font-semibold text-primary text-sm">Admin Panel</p>
                 <p className="text-xs text-secondary mt-0.5">Manage documents and content</p>
               </div>
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary group-hover:text-primary-hover transition">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-company-red group-hover:text-company-red/80 transition">
                 Access <ExternalLink size={14} />
               </span>
             </a>
@@ -364,14 +371,22 @@ export default function DocumentPortal() {
         {/* Search & Filter */}
         <div className="max-w-2xl mx-auto mb-8 space-y-4">
           <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
             <input
               type="text"
               placeholder="Search documents by title or description..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-surface border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-primary placeholder:text-muted transition-shadow shadow-sm"
+              className="w-full pl-11 pr-11 py-3 bg-surface border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-company-red/20 focus:border-company-red text-primary placeholder:text-muted transition-shadow shadow-sm"
             />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-primary hover:bg-border-light rounded-lg transition"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -382,8 +397,8 @@ export default function DocumentPortal() {
                 aria-pressed={selectedCategory === cat}
                 className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                   selectedCategory === cat
-                    ? 'bg-primary text-white shadow-md shadow-primary-light'
-                    : 'bg-surface text-secondary border border-border hover:border-primary-light hover:text-primary shadow-sm'
+                    ? 'bg-company-red text-white shadow-md shadow-company-blue/25'
+                    : 'bg-surface text-secondary border border-border hover:border-company-red/30 hover:text-company-red shadow-sm'
                 }`}
               >
                 {cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -416,11 +431,12 @@ export default function DocumentPortal() {
           </p>
           <a
             href="/admin"
-            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-primary transition-colors font-medium"
+            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-company-red transition-colors font-medium"
           >
             <Shield size={14} />
             Admin Panel
           </a>
+          <p className="text-muted text-xs mt-6">&copy; 2026 Honeybee</p>
         </div>
       </div>
 

@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import defaultTheme from 'tailwindcss/defaultTheme'
+
 export default {
   content: [
     "./index.html",
@@ -36,6 +38,11 @@ export default {
         'info-text': 'rgb(var(--color-info-text) / <alpha-value>)',
         'info-bg': 'rgb(var(--color-info-bg) / <alpha-value>)',
         'info-border': 'rgb(var(--color-info-border) / <alpha-value>)',
+        'company-red': '#EE1C25',
+        'company-blue': '#1C5AEE',
+      },
+      fontFamily: {
+        sans: ['Inter', ...defaultTheme.fontFamily.sans],
       },
     },
   },
