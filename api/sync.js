@@ -1,5 +1,19 @@
 import { getAuth, getToken, handleGet, handleUpload, handleDelete, handleUpdate, handleReorder } from '../lib/sheets.js'
 
+// Whitelist of allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  'https://sop-portal-nine.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+]
+
+function isOriginAllowed(origin) {
+  if (!origin) return false
+  // Allow all Vercel preview deployments (*.vercel.app)
+  if (origin.endsWith('.vercel.app')) return true
+  return ALLOWED_ORIGINS.includes(origin)
+}
+
 function json(res, status, data) {
   res.status(status).json(data)
 }
@@ -23,9 +37,13 @@ function isAdmin(req) {
 }
 
 export default async function handler(req, res) {
+  // ── CORS ──────────────────────────────────────────────────
   const origin = req.headers.origin
   if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin)
+    if (isOriginAllowed(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+    }
+    // If origin not allowed, don't set CORS header (browser blocks it)
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -40,12 +58,14 @@ export default async function handler(req, res) {
     const auth = getAuth()
     const token = await getToken(auth)
 
+    // ── GET: public read (data is already public via Drive) ──
     if (req.method === 'GET') {
       const result = await handleGet(token)
       json(res, 200, result)
       return
     }
 
+    // ── POST: mutations require admin auth ─────────────────
     if (req.method !== 'POST') {
       json(res, 405, { error: 'Method not allowed' })
       return
