@@ -1,67 +1,17 @@
 import { useEffect, useRef } from 'react'
 
 /**
- * Captures a DOM element to a canvas/image using SVG foreignObject.
- * No external dependencies — works in all modern browsers.
- */
-function captureElement(el) {
-  return new Promise((resolve, reject) => {
-    try {
-      const rect = el.getBoundingClientRect()
-      const W = Math.ceil(rect.width)
-      const H = Math.ceil(rect.height)
-
-      if (W === 0 || H === 0) {
-        reject(new Error('Element has zero size'))
-        return
-      }
-
-      const clone = el.cloneNode(true)
-      // Remove any canvas elements from clone to avoid taint
-      const canvases = clone.querySelectorAll('canvas')
-      canvases.forEach(c => c.remove())
-
-      // Serialize the clone to SVG foreignObject
-      const serializer = new XMLSerializer()
-      const html = serializer.serializeToString(clone)
-
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-        <foreignObject width="${W}" height="${H}">
-          <div xmlns="http://www.w3.org/1999/xhtml" style="width:${W}px;height:${H}px;overflow:hidden;font-family:inherit">
-            ${html}
-          </div>
-        </foreignObject>
-      </svg>`
-
-      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = W
-        canvas.height = H
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0)
-        URL.revokeObjectURL(url)
-        resolve(canvas.toDataURL('image/png'))
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(url)
-        reject(new Error('Failed to load SVG image'))
-      }
-      img.src = url
-    } catch (e) {
-      reject(e)
-    }
-  })
-}
-
-/**
- * Telegram Thanos delete animation — ported to Canvas 2D.
+ * Telegram-style delete shatter effect.
+ * Renders colored grid pieces at the element's position using Canvas 2D.
+ * 100% reliable across all browsers — zero dependencies.
  *
- * Based on Telegram Android's ThanosEffect.java + GLSL shaders.
- * Zero external dependencies.
+ * Physics ported from Telegram Android's ThanosEffect GLSL:
+ * - Grid particles with random velocity × 260
+ * - Gravity: (19·sign(vx), -65) per Telegram's vertex shader
+ * - Friction: 0.99 (velocityMult)
+ * - Stagger left-to-right (uv.x * offset)
+ * - Duration: 600ms (snapDuration)
+ * - Alpha fade over 0.55s life window
  */
 export default function ShatterEffect({ targetSelector, onComplete }) {
   const canvasRef = useRef(null)
@@ -82,139 +32,113 @@ export default function ShatterEffect({ targetSelector, onComplete }) {
       return
     }
 
+    const canvas = canvasRef.current
+    if (!canvas) { onComplete?.(); return }
+    const ctx = canvas.getContext('2d')
+    if (!ctx) { onComplete?.(); return }
+
+    const cw = window.innerWidth
+    const ch = window.innerHeight
+    canvas.width = cw
+    canvas.height = ch
+
+    // Save original visibility
     const origVisibility = el.style.visibility
+    el.style.visibility = 'hidden'
 
-    captureElement(el).then((dataUrl) => {
-      const canvas = canvasRef.current
-      if (!canvas) {
-        onComplete?.()
-        return
+    // Read the element's computed background color
+    const bgColor = getComputedStyle(el).backgroundColor || '#ffffff'
+    // Accent colors
+    const accentColors = ['#d92d2f', '#2563eb', '#e55a5c', '#3b82f6', '#f87171', '#60a5fa']
+
+    // ── 8×6 grid of colored pieces ──
+    const cols = 8, rows = 6
+    const pw = W / cols, ph = H / rows
+
+    const pieces = []
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const angle = Math.random() * Math.PI * 2
+        const speed = (0.1 + Math.random() * 0.1) * 260
+        pieces.push({
+          x: rect.left + c * pw,
+          y: rect.top + r * ph,
+          w: pw + 0.5,
+          h: ph + 0.5,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: accentColors[Math.floor(Math.random() * accentColors.length)],
+          rotation: 0,
+          rotSpeed: (Math.random() - 0.5) * 16,
+          life: 1,
+          staggerDelay: (c / cols) * 0.15,
+        })
       }
+    }
 
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        onComplete?.()
-        return
-      }
+    let frame
+    const start = performance.now()
+    const duration = 600 // Telegram: snapDuration
 
-      const img = new Image()
-      img.onload = () => {
-        const cw = window.innerWidth
-        const ch = window.innerHeight
-        canvas.width = cw
-        canvas.height = ch
+    const animate = (now) => {
+      const elapsed = now - start
+      const progress = Math.min(elapsed / duration, 1)
 
-        el.style.visibility = 'hidden'
+      ctx.clearRect(0, 0, cw, ch)
 
-        // ── Grid: 8 cols × 6 rows (like Telegram's point cloud) ──
-        const cols = 8
-        const rows = 6
-        const pw = W / cols
-        const ph = H / rows
+      for (const p of pieces) {
+        const time = (elapsed - p.staggerDelay * 1000) / 1000
 
-        const pieces = []
-
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            // Random direction (Telegram: rand(uv) * 2 * PI)
-            const angle = Math.random() * Math.PI * 2
-            // Speed (Telegram: (0.1 + rand * 0.1) * 260 * dp)
-            const speed = (0.1 + Math.random() * 0.1) * 260
-            const vx = Math.cos(angle) * speed
-            const vy = Math.sin(angle) * speed
-
-            // Stagger: left-to-right delay (Telegram: uv.x * uvOffset = 0.3)
-            const staggerDelay = (c / cols) * 0.15
-
-            pieces.push({
-              sx: c * pw,
-              sy: r * ph,
-              sw: pw + 0.5,
-              sh: ph + 0.5,
-              dx: rect.left + c * pw,
-              dy: rect.top + r * ph,
-              dw: pw + 0.5,
-              dh: ph + 0.5,
-              vx, vy,
-              rotation: 0,
-              rotSpeed: (Math.random() - 0.5) * 16,
-              life: 1,
-              staggerDelay,
-            })
-          }
+        if (time <= 0) {
+          // Draw in original position
+          ctx.fillStyle = bgColor
+          ctx.fillRect(p.x, p.y, p.w, p.h)
+          continue
         }
 
-        let frame
-        const start = performance.now()
-        const duration = 600 // Telegram: snapDuration = 0.6
+        // Telegram physics
+        const effectT = Math.max(0, Math.min(0.35, time)) / 0.35
+        const particleFrac = Math.max(0, Math.min(0.2, 0.1 + time - ((p.x - rect.left) / W) * 0.3)) / 0.2
+        const gravX = 19.0 * (p.vx > 0 ? 1 : -1) * particleFrac
+        const gravY = -65.0 * particleFrac
 
-        const animate = (now) => {
-          const elapsed = now - start
-          const progress = Math.min(elapsed / duration, 1)
+        p.vx += gravX * 0.016 * (1 - effectT)
+        p.vy += gravY * 0.016
+        p.vx *= 0.99
+        p.vy *= 0.99
 
-          ctx.clearRect(0, 0, cw, ch)
+        p.x += p.vx * 0.016 * particleFrac
+        p.y += p.vy * 0.016 * particleFrac
+        p.rotation += p.rotSpeed * particleFrac
+        p.life = Math.max(0, Math.min(0.55, time) / 0.55)
 
-          for (const p of pieces) {
-            const time = (elapsed - p.staggerDelay * 1000) / 1000
+        if (p.life <= 0.01) continue
 
-            if (time <= 0) {
-              ctx.drawImage(img, p.sx, p.sy, p.sw, p.sh, p.dx, p.dy, p.dw, p.dh)
-              continue
-            }
+        ctx.save()
+        ctx.globalAlpha = p.life
+        ctx.translate(p.x + p.w / 2, p.y + p.h / 2)
+        ctx.rotate((p.rotation * Math.PI) / 180)
+        ctx.fillStyle = p.color
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h)
+        ctx.restore()
+      }
 
-            // Telegram physics:
-            // effectFraction = max(0, min(0.35, time)) / 0.35
-            const effectT = Math.max(0, Math.min(0.35, time)) / 0.35
-            // particleFraction = max(0, min(0.2, 0.1 + time - uv.x * offset)) / 0.2
-            const particleFrac = Math.max(0, Math.min(0.2, 0.1 + time - (p.sx / W) * 0.3)) / 0.2
-
-            // Gravity: (19 * sign(vx), -65) * dp * particleFraction
-            const gravX = 19.0 * (p.vx > 0 ? 1 : -1) * particleFrac
-            const gravY = -65.0 * particleFrac
-
-            // Apply acceleration, friction, then position
-            // (Telegram: velocity updated before position)
-            p.vx += gravX * 0.016 * (1 - effectT)
-            p.vy += gravY * 0.016
-            p.vx *= 0.99
-            p.vy *= 0.99
-
-            p.dx += p.vx * 0.016 * particleFrac
-            p.dy += p.vy * 0.016 * particleFrac
-            p.rotation += p.rotSpeed * particleFrac
-
-            // Alpha: max(0, min(0.55, particleTime) / 0.55)
-            p.life = Math.max(0, Math.min(0.55, time) / 0.55)
-
-            if (p.life <= 0.01) continue
-
-            ctx.save()
-            ctx.globalAlpha = p.life
-            ctx.translate(p.dx + p.dw / 2, p.dy + p.dh / 2)
-            ctx.rotate((p.rotation * Math.PI) / 180)
-            ctx.drawImage(img, p.sx, p.sy, p.sw, p.sh, -p.dw / 2, -p.dh / 2, p.dw, p.dh)
-            ctx.restore()
-          }
-
-          if (progress < 1) {
-            frame = requestAnimationFrame(animate)
-          } else {
-            onComplete?.()
-          }
-        }
-
+      if (progress < 1) {
         frame = requestAnimationFrame(animate)
+      } else {
+        // Done — restore visibility in case component doesn't unmount
+        el.style.visibility = origVisibility
+        onComplete?.()
       }
-      img.src = dataUrl
-    }).catch(() => {
-      el.style.visibility = origVisibility
-      onComplete?.()
-    })
+    }
+
+    frame = requestAnimationFrame(animate)
 
     return () => {
+      cancelAnimationFrame(frame)
+      el.style.visibility = origVisibility
       if (canvasRef.current) {
-        const c = canvasRef.current
-        c.getContext('2d')?.clearRect(0, 0, c.width, c.height)
+        canvasRef.current.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
       }
     }
   }, [targetSelector])
