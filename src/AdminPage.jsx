@@ -16,6 +16,7 @@ export default function AdminPage({ onLogout }) {
   const [dragId, setDragId] = useState(null)
   const [deletingIds, setDeletingIds] = useState([])
   const [updatingId, setUpdatingId] = useState(null)
+  const [lastSync, setLastSync] = useState(null)
   const updatingIdRef = useRef(null)
   const updateInputRef = useRef(null)
   const mountedRef = useRef(true)
@@ -413,6 +414,7 @@ export default function AdminPage({ onLogout }) {
                   <th className="text-left px-4 py-3 font-semibold text-primary">Title</th>
                   <th className="text-left px-4 py-3 font-semibold text-primary">Category</th>
                   <th className="text-left px-4 py-3 font-semibold text-primary">File ID</th>
+                  <th className="text-left px-4 py-3 font-semibold text-primary">Updated</th>
                   <th className="text-left px-4 py-3 font-semibold text-primary">QR Code</th>
                   <th className="text-left px-4 py-3 font-semibold text-primary">Actions</th>
                 </tr>
@@ -488,6 +490,19 @@ export default function AdminPage({ onLogout }) {
                               ? extractFileId(sop.gdrivePath).slice(0, 20) + '...'
                               : extractFileId(sop.gdrivePath)}
                           </code>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {sop._syncing ? (
+                          <span className="text-xs text-muted">—</span>
+                        ) : (
+                          <span className="text-[11px] text-muted">
+                            {sop.updatedAt
+                              ? new Date(sop.updatedAt).toLocaleDateString('id-ID', {
+                                  year: 'numeric', month: 'short', day: 'numeric'
+                                })
+                              : '—'}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3">

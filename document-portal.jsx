@@ -217,7 +217,17 @@ function SOPCard({ sop, onView, onShare }) {
         <h3 className="font-semibold text-primary text-lg leading-tight mb-1.5">{sop.title}</h3>
         <p className="text-sm text-secondary leading-relaxed mb-5 flex-1">{sop.description}</p>
 
-        <div className="flex items-center gap-2 pt-3 border-t border-border-light">
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-border-light">
+          <div className="text-[11px] text-muted">
+            {sop.updatedAt
+              ? (() => {
+                  const d = new Date(sop.updatedAt)
+                  return 'Updated ' + d.toLocaleDateString('id-ID', {
+                    year: 'numeric', month: 'short', day: 'numeric'
+                  })
+                })()
+              : ''}
+          </div>
           <button
             onClick={() => onView(sop)}
             className="flex-1 flex items-center justify-center gap-2 bg-company-red hover:bg-company-red/90 text-white text-sm font-medium py-2.5 rounded-xl transition-all shadow-md shadow-company-blue/25 hover:shadow-lg hover:shadow-company-red/20 active:scale-[0.97]"
@@ -257,10 +267,12 @@ export default function DocumentPortal() {
   const [selectedSOP, setSelectedSOP] = useState(null)
   const [shareSOP, setShareSOP] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [lastSync, setLastSync] = useState(null)
 
   useEffect(() => {
     fetchSOPsFresh().then(data => {
       setSopData(data)
+      setLastSync(new Date())
       setLoading(false)
     }).catch((err) => {
       setFetchError(err?.message || 'Gagal memuat dokumen')
@@ -273,6 +285,7 @@ export default function DocumentPortal() {
     setFetchError(null)
     fetchSOPsFresh().then(data => {
       setSopData(data)
+      setLastSync(new Date())
       setLoading(false)
     }).catch((err) => {
       setFetchError(err?.message || 'Gagal memuat dokumen')
@@ -426,16 +439,23 @@ export default function DocumentPortal() {
 
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-border text-center">
-          <p className="text-muted text-sm mb-3">
-            Scan a QR code with your phone to access instantly
-          </p>
-          <a
-            href="/admin"
-            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-company-red transition-colors font-medium"
-          >
-            <Shield size={14} />
-            Admin Panel
-          </a>
+          <div className="flex justify-between items-end text-muted text-xs max-w-xl mx-auto">
+            <p>
+              {lastSync
+                ? `Data sinkron · ${lastSync.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })} ${lastSync.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+                : 'Memuat data...'}
+            </p>
+            <p>Scan QR untuk akses instan</p>
+          </div>
+          <div className="mt-4">
+            <a
+              href="/admin"
+              className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-company-red transition-colors font-medium"
+            >
+              <Shield size={14} />
+              Admin Panel
+            </a>
+          </div>
           <p className="text-muted text-xs mt-6">&copy; 2026 Honeybee</p>
         </div>
       </div>
