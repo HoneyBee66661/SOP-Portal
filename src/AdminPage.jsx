@@ -3,81 +3,8 @@ import { QRCodeSVG } from 'qrcode.react'
 import { LogOut, ExternalLink, RefreshCw, Loader, Upload, Check, Clock, Trash2, GripVertical, ChevronDown } from 'lucide-react'
 import UploadModal from './UploadModal.jsx'
 import ConfirmDialog from './ConfirmDialog.jsx'
+import ShatterEffect from './ShatterEffect.jsx'
 import { SHEET_CSV_URL, SHEET_EDIT_URL, extractFileId, fetchSOPsFresh, syncApi, readFileAsBase64 } from './lib.js'
-
-// ── Particle Burst Component ──
-function ParticleBurst({ x, y }) {
-  const canvasRef = useRef(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const W = window.innerWidth
-    const H = window.innerHeight
-    canvas.width = W
-    canvas.height = H
-
-    const colors = ['#d92d2f', '#2563eb', '#e55a5c', '#3b82f6', '#f87171', '#60a5fa']
-    const particles = Array.from({ length: 28 }, () => ({
-      x, y,
-      vx: (Math.random() - 0.5) * 14,
-      vy: (Math.random() - 0.5) * 14 - 4,
-      size: 4 + Math.random() * 8,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      life: 1,
-      decay: 0.012 + Math.random() * 0.015,
-      rotation: Math.random() * 360,
-      rotSpeed: (Math.random() - 0.5) * 12,
-      shape: Math.random() > 0.5 ? 'circle' : 'square',
-    }))
-
-    let frame
-    const animate = () => {
-      ctx.clearRect(0, 0, W, H)
-      for (const p of particles) {
-        p.x += p.vx
-        p.y += p.vy
-        p.vy += 0.25 // gravity
-        p.vx *= 0.98 // friction
-        p.life -= p.decay
-        p.rotation += p.rotSpeed
-
-        if (p.life <= 0) continue
-
-        ctx.save()
-        ctx.globalAlpha = p.life
-        ctx.translate(p.x, p.y)
-        ctx.rotate((p.rotation * Math.PI) / 180)
-        ctx.fillStyle = p.color
-
-        if (p.shape === 'circle') {
-          ctx.beginPath()
-          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2)
-          ctx.fill()
-        } else {
-          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size)
-        }
-
-        ctx.restore()
-      }
-      if (particles.some(p => p.life > 0)) {
-        frame = requestAnimationFrame(animate)
-      }
-    }
-    frame = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(frame)
-  }, [x, y])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-[9999]"
-    />
-  )
-}
 
 export default function AdminPage({ onLogout }) {
   const [sops, setSops] = useState([])
@@ -98,7 +25,8 @@ export default function AdminPage({ onLogout }) {
   const [showMore, setShowMore] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
   const pendingDeleteRef = useRef(null)
-  const [particleBurst, setParticleBurst] = useState(null)
+  const [shatterTarget, setShatterTarget] = useState(null)
+  const shatterTargetRef = useRef(null)
 
   useEffect(() => {
     mountedRef.current = true
@@ -189,20 +117,25 @@ export default function AdminPage({ onLogout }) {
     pendingDeleteRef.current = sop
   }
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     const sop = pendingDeleteRef.current
     setPendingDelete(null)
     pendingDeleteRef.current = null
     if (!sop) return
 
-    // Capture position of the delete button for particle burst
-    const btn = document.querySelector(`[data-delete-id="${sop.id}"]`)
-    if (btn) {
-      const rect = btn.getBoundingClientRect()
-      setParticleBurst({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
-      setTimeout(() => setParticleBurst(null), 2000)
-    }
+    // Trigger shatter animation on the row
+    shatterTargetRef.current = sop
+    setShatterTarget(`tr[data-shatter-id="${sop.id}"]`)
+    // The actual delete happens in handleShatterComplete
+  }
 
+  const handleShatterComplete = async () => {
+    const sop = shatterTargetRef.current
+    setShatterTarget(null)
+    shatterTargetRef.current = null
+    if (!sop) return
+
+    // Now do the actual delete API call
     setDeletingIds(prev => [...prev, sop.id])
 
     await syncApi('delete', {
@@ -513,6 +446,7 @@ export default function AdminPage({ onLogout }) {
                   displaySops.map((sop, idx) => (
                     <tr
                       key={sop._syncing ? sop.id : `sop-${sop.id}`}
+                      data-shatter-id={sop._syncing ? null : sop.id}
                       draggable={!sop._syncing}
                       onDragStart={() => handleDragStart(sop.id)}
                       onDragOver={handleDragOver}
@@ -612,7 +546,6 @@ export default function AdminPage({ onLogout }) {
                             <button
                               onClick={() => handleDelete(sop)}
                               disabled={deletingIds.includes(sop.id)}
-                              data-delete-id={sop.id}
                               className="p-2.5 text-destructive hover:bg-destructive-light rounded-lg transition disabled:opacity-40 min-w-[44px] min-h-[44px] flex items-center justify-center"
                               title="Hapus"
                               aria-label={`Hapus ${sop.title}`}
@@ -666,7 +599,7 @@ export default function AdminPage({ onLogout }) {
           onCancel={cancelDelete}
         />
       )}
-      {particleBurst && <ParticleBurst x={particleBurst.x} y={particleBurst.y} />}
+      {shatterTarget && <ShatterEffect targetSelector={shatterTarget} onComplete={handleShatterComplete} />}
     </div>
   )
 }
