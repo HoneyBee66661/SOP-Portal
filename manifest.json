@@ -1,6 +1,6 @@
 {
   "name": "Document Portal",
-  "short_name": "Documents",
+  "short_name": "Doc Portal",
   "description": "Easy access to company documents and procedures",
   "start_url": "/",
   "display": "standalone",
