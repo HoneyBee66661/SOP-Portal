@@ -217,7 +217,17 @@ function SOPCard({ sop, onView, onShare }) {
         <h3 className="font-semibold text-primary text-lg leading-tight mb-1.5">{sop.title}</h3>
         <p className="text-sm text-secondary leading-relaxed mb-5 flex-1">{sop.description}</p>
 
-        <div className="flex items-center gap-2 pt-3 border-t border-border-light">
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-border-light">
+          <div className="text-[11px] text-muted">
+            {sop.updatedAt
+              ? (() => {
+                  const d = new Date(sop.updatedAt)
+                  return 'Updated ' + d.toLocaleDateString('id-ID', {
+                    year: 'numeric', month: 'short', day: 'numeric'
+                  })
+                })()
+              : ''}
+          </div>
           <button
             onClick={() => onView(sop)}
             className="flex-1 flex items-center justify-center gap-2 bg-company-red hover:bg-company-red/90 text-white text-sm font-medium py-2.5 rounded-xl transition-all shadow-md shadow-company-blue/25 hover:shadow-lg hover:shadow-company-red/20 active:scale-[0.97]"
