@@ -1,145 +1,226 @@
 import { useEffect, useRef } from 'react'
 
 /**
- * Telegram-style delete shatter effect.
- * Renders colored grid pieces at the element's position using Canvas 2D.
- * 100% reliable across all browsers — zero dependencies.
+ * Dust-particle delete effect with diagonal tape-peel.
  *
- * Physics ported from Telegram Android's ThanosEffect GLSL:
- * - Grid particles with random velocity × 260
- * - Gravity: (19·sign(vx), -65) per Telegram's vertex shader
- * - Friction: 0.99 (velocityMult)
- * - Stagger left-to-right (uv.x * offset)
- * - Duration: 600ms (snapDuration)
- * - Alpha fade over 0.55s life window
+ * Algorithm:
+ *  1. Capture — clone the element into an SVG <foreignObject>, render
+ *     to an offscreen canvas (zero deps). Fallback to computed colors.
+ *  2. Sample — every N-th pixel becomes one particle with its exact
+ *     RGB color. Particles are split horizontally into two slices.
+ *  3. Physics — lower slice: burst upward + rightward with gravity
+ *     (dust blown off a speeding car). Upper slice: same burst PLUS
+ *     a diagonal "tape peel" wave from bottom-left → upper-right.
+ *  4. Overall timing flows left → right. Render: fast fillRect loop.
  */
 export default function ShatterEffect({ targetSelector, onComplete }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
     const el = document.querySelector(targetSelector)
-    if (!el) {
-      onComplete?.()
-      return
-    }
+    if (!el) { onComplete?.(); return }
 
     const rect = el.getBoundingClientRect()
-    const W = rect.width
-    const H = rect.height
+    if (rect.width === 0 || rect.height === 0) { onComplete?.(); return }
 
-    if (W === 0 || H === 0) {
-      onComplete?.()
-      return
-    }
-
-    const canvas = canvasRef.current
-    if (!canvas) { onComplete?.(); return }
-    const ctx = canvas.getContext('2d')
+    const $canvas = canvasRef.current
+    if (!$canvas) { onComplete?.(); return }
+    const ctx = $canvas.getContext('2d')
     if (!ctx) { onComplete?.(); return }
 
+    const W = Math.ceil(rect.width)
+    const H = Math.ceil(rect.height)
     const cw = window.innerWidth
     const ch = window.innerHeight
-    canvas.width = cw
-    canvas.height = ch
+    $canvas.width = cw
+    $canvas.height = ch
 
-    // Save original visibility
+    let running = true
+    let frame
+
+    // Hide original immediately
     const origVisibility = el.style.visibility
     el.style.visibility = 'hidden'
 
-    // Read the element's computed background color
-    const bgColor = getComputedStyle(el).backgroundColor || '#ffffff'
-    // Accent colors
-    const accentColors = ['#d92d2f', '#2563eb', '#e55a5c', '#3b82f6', '#f87171', '#60a5fa']
+    // ───── Step 1: Capture ─────
+    const captureElement = () => {
+      return new Promise((resolve) => {
+        try {
+          const clone = el.cloneNode(true)
+          clone.querySelectorAll('canvas').forEach(c => c.remove())
 
-    // ── 8×6 grid of colored pieces ──
-    const cols = 8, rows = 6
-    const pw = W / cols, ph = H / rows
+          const html = new XMLSerializer().serializeToString(clone)
+          const svg = [
+            '<svg xmlns="http://www.w3.org/2000/svg" width="', W, '" height="', H, '">',
+            '<foreignObject width="', W, '" height="', H, '">',
+            '<div xmlns="http://www.w3.org/1999/xhtml" style="width:', W, 'px;height:', H, 'px;overflow:hidden">',
+            html,
+            '</div></foreignObject></svg>',
+          ].join('')
 
-    const pieces = []
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const angle = Math.random() * Math.PI * 2
-        const speed = (0.1 + Math.random() * 0.1) * 260
-        pieces.push({
-          x: rect.left + c * pw,
-          y: rect.top + r * ph,
-          w: pw + 0.5,
-          h: ph + 0.5,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          color: accentColors[Math.floor(Math.random() * accentColors.length)],
-          rotation: 0,
-          rotSpeed: (Math.random() - 0.5) * 16,
-          life: 1,
-          staggerDelay: (c / cols) * 0.15,
-        })
-      }
+          const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+          const url = URL.createObjectURL(blob)
+          const img = new Image()
+          img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+          img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+          img.src = url
+        } catch { resolve(null) }
+      })
     }
 
-    let frame
-    const start = performance.now()
-    const duration = 600 // Telegram: snapDuration
+    captureElement().then((img) => {
+      if (!running) return
 
-    const animate = (now) => {
-      const elapsed = now - start
-      const progress = Math.min(elapsed / duration, 1)
+      // ───── Step 2: Pixel sampling + slice split ─────
+      let pixelData = null
+      if (img) {
+        const offscreen = document.createElement('canvas')
+        offscreen.width = W
+        offscreen.height = H
+        const offCtx = offscreen.getContext('2d')
+        if (offCtx) {
+          offCtx.drawImage(img, 0, 0, W, H)
+          try { pixelData = offCtx.getImageData(0, 0, W, H) } catch { /* taint */ }
+        }
+      }
 
-      ctx.clearRect(0, 0, cw, ch)
+      const fallbackPalette = buildFallbackPalette(el)
 
-      for (const p of pieces) {
-        const time = (elapsed - p.staggerDelay * 1000) / 1000
+      // Dynamic stride: keep particle count manageable
+      const totalPixels = W * H
+      const stride = totalPixels > 50000 ? 3 : totalPixels > 20000 ? 2 : 1
+      const size = stride
+      const data = pixelData?.data
 
-        if (time <= 0) {
-          // Draw in original position
-          ctx.fillStyle = bgColor
-          ctx.fillRect(p.x, p.y, p.w, p.h)
-          continue
+      // Horizontal split line
+      const midY = H / 2
+
+      const pieces = []
+
+      for (let y = 0; y < H; y += stride) {
+        for (let x = 0; x < W; x += stride) {
+          let color
+
+          if (data) {
+            const idx = (y * W + x) * 4
+            const a = data[idx + 3]
+            if (a < 128) continue
+            color = `rgb(${data[idx]},${data[idx + 1]},${data[idx + 2]})`
+          } else {
+            color = fallbackPalette[Math.floor(Math.random() * fallbackPalette.length)]
+          }
+
+          // Normalized position within the element
+          const nx = x / W       // 0 = left, 1 = right
+          const ny = y / H       // 0 = top, 1 = bottom
+          const isUpper = y < midY
+
+          // ═══ Left-to-right stagger (overall wave) ═══
+          const ltrDelay = nx * 0.12
+
+          // ═══ Diagonal tape-peel delay (upper half only) ═══
+          // Peel wave starts at bottom-left (nx=0, ny=1) and sweeps
+          // toward upper-right (nx=1, ny=0).
+          const diagProgress = isUpper ? (nx + (1 - ny)) / 2 : 0
+          const peelDelay = isUpper ? diagProgress * 0.18 : 0
+
+          // Total delay = left-to-right wave + peel stagger + micro jitter
+          const totalDelay = ltrDelay + peelDelay + Math.random() * 0.03
+
+          // Jitter starting position
+          const jx = (Math.random() - 0.5) * stride
+          const jy = (Math.random() - 0.5) * stride
+
+          // ═══ Base burst ═══
+          // Lower half: 10% strength — barely lifts before gravity yanks it down
+          // Upper half: full burst as base
+          const baseScale = isUpper ? 1 : 0.1
+          const vy = -(40 + Math.random() * 56) * baseScale
+          const vx = (24 + Math.random() * 36) * baseScale
+
+          // ═══ Diagonal peel velocity (upper half only) ═══
+          // Scaled BIGGER than the base burst — dominant visual motion.
+          // Diagonal kick toward upper-right, simulating a tape being
+          // peeled from bottom-left to upper-right.
+          const peelVx = isUpper ? 80 + Math.random() * 80 : 0
+          const peelVy = isUpper ? -(72 + Math.random() * 88) : 0
+
+          pieces.push({
+            x: rect.left + x + jx,
+            y: rect.top + y + jy,
+            size: size * (0.6 + Math.random() * 0.8),
+            vx,
+            vy,
+            peelVx,
+            peelVy,
+            color,
+            life: 1,
+            delay: totalDelay,
+            peelDelay,
+            isUpper,
+          })
+        }
+      }
+
+      // ───── Step 4: Render ─────
+      const t0 = performance.now()
+      const DURATION = 900
+
+      const draw = (now) => {
+        if (!running) return
+        const progress = (now - t0) / DURATION
+        if (progress >= 1) { onComplete?.(); return }
+
+        ctx.clearRect(0, 0, cw, ch)
+
+        for (const p of pieces) {
+          const t = (now - t0) / 1000 - p.delay
+          if (t <= 0) {
+            // At origin — tiny colored dot
+            ctx.fillStyle = p.color
+            ctx.fillRect(p.x, p.y, p.size, p.size)
+            continue
+          }
+
+          // ── Base physics: gravity + friction ──
+          p.vy += 136 * 0.016
+          p.vx *= 0.98
+          p.vy *= 0.98
+
+          p.x += p.vx * 0.016
+          p.y += p.vy * 0.016
+
+          // ── Diagonal tape-peel (upper half only) ──
+          if (p.isUpper) {
+            const peelT = t - p.peelDelay
+            if (peelT > 0) {
+              // Peel velocity: fast initial diagonal burst, then decay
+              const peelFriction = Math.exp(-peelT * 5)
+              p.x += p.peelVx * 0.016 * peelFriction
+              p.y += p.peelVy * 0.016 * peelFriction
+            }
+          }
+
+          // ── Fade ──
+          p.life = Math.max(0, 1 - t / 0.55)
+          if (p.life < 0.01) continue
+
+          ctx.globalAlpha = p.life
+          ctx.fillStyle = p.color
+          ctx.fillRect(p.x, p.y, p.size, p.size)
         }
 
-        // Telegram physics
-        const effectT = Math.max(0, Math.min(0.35, time)) / 0.35
-        const particleFrac = Math.max(0, Math.min(0.2, 0.1 + time - ((p.x - rect.left) / W) * 0.3)) / 0.2
-        const gravX = 19.0 * (p.vx > 0 ? 1 : -1) * particleFrac
-        const gravY = -65.0 * particleFrac
-
-        p.vx += gravX * 0.016 * (1 - effectT)
-        p.vy += gravY * 0.016
-        p.vx *= 0.99
-        p.vy *= 0.99
-
-        p.x += p.vx * 0.016 * particleFrac
-        p.y += p.vy * 0.016 * particleFrac
-        p.rotation += p.rotSpeed * particleFrac
-        p.life = Math.max(0, Math.min(0.55, time) / 0.55)
-
-        if (p.life <= 0.01) continue
-
-        ctx.save()
-        ctx.globalAlpha = p.life
-        ctx.translate(p.x + p.w / 2, p.y + p.h / 2)
-        ctx.rotate((p.rotation * Math.PI) / 180)
-        ctx.fillStyle = p.color
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h)
-        ctx.restore()
+        ctx.globalAlpha = 1
+        frame = requestAnimationFrame(draw)
       }
 
-      if (progress < 1) {
-        frame = requestAnimationFrame(animate)
-      } else {
-        // Done — restore visibility in case component doesn't unmount
-        el.style.visibility = origVisibility
-        onComplete?.()
-      }
-    }
-
-    frame = requestAnimationFrame(animate)
+      frame = requestAnimationFrame(draw)
+    })
 
     return () => {
-      cancelAnimationFrame(frame)
+      running = false
+      if (frame) cancelAnimationFrame(frame)
       el.style.visibility = origVisibility
-      if (canvasRef.current) {
-        canvasRef.current.getContext('2d')?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-      }
     }
   }, [targetSelector])
 
@@ -149,4 +230,71 @@ export default function ShatterEffect({ targetSelector, onComplete }) {
       className="fixed inset-0 pointer-events-none z-[9999]"
     />
   )
+}
+
+/**
+ * Build a color palette from the element's computed styles.
+ * Fallback when pixel capture fails/taints.
+ */
+function buildFallbackPalette(el) {
+  const colors = []
+  const bg = parseColor(getComputedStyle(el).backgroundColor)
+  if (bg) colors.push(bg)
+
+  const children = el.querySelectorAll('*')
+  const max = Math.min(children.length, 20)
+  for (let i = 0; i < max; i++) {
+    const style = getComputedStyle(children[i])
+    const childBg = parseColor(style.backgroundColor)
+    if (childBg && !isWhite(childBg)) colors.push(childBg)
+    const text = parseColor(style.color)
+    if (text && !isWhiteOrBlack(text)) colors.push(text)
+  }
+
+  if (colors.length < 3) {
+    colors.push(
+      '#e5e7eb', '#d1d5db', '#9ca3af', '#6b7280',
+      '#3b82f6', '#ef4444', '#10b981',
+    )
+  }
+
+  const palette = []
+  for (const c of colors) {
+    palette.push(c)
+    palette.push(darken(c, 0.15))
+    palette.push(lighten(c, 0.15))
+  }
+  return palette
+}
+
+function parseColor(str) {
+  if (!str || str === 'transparent' || str === 'rgba(0, 0, 0, 0)') return null
+  const m = str.match(/\d+/g)
+  if (!m || m.length < 3) return null
+  return `rgb(${m[0]},${m[1]},${m[2]})`
+}
+
+function isWhite(rgb) {
+  const m = rgb.match(/\d+/g)
+  if (!m) return false
+  return parseInt(m[0]) > 240 && parseInt(m[1]) > 240 && parseInt(m[2]) > 240
+}
+
+function isWhiteOrBlack(rgb) {
+  const m = rgb.match(/\d+/g)
+  if (!m) return false
+  const avg = (parseInt(m[0]) + parseInt(m[1]) + parseInt(m[2])) / 3
+  return avg > 230 || avg < 30
+}
+
+function darken(rgb, amount) {
+  const m = rgb.match(/\d+/g)
+  if (!m) return rgb
+  return `rgb(${Math.round(parseInt(m[0]) * (1 - amount))},${Math.round(parseInt(m[1]) * (1 - amount))},${Math.round(parseInt(m[2]) * (1 - amount))})`
+}
+
+function lighten(rgb, amount) {
+  const m = rgb.match(/\d+/g)
+  if (!m) return rgb
+  return `rgb(${Math.round(Math.min(255, parseInt(m[0]) + (255 - parseInt(m[0])) * amount))},${Math.round(Math.min(255, parseInt(m[1]) + (255 - parseInt(m[1])) * amount))},${Math.round(Math.min(255, parseInt(m[2]) + (255 - parseInt(m[2])) * amount))})`
 }
