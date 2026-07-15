@@ -1,12 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import QRCode from 'qrcode'
 import { Search, X, ExternalLink, Share2, Download, Shield, Check, Link, FileText, Loader, RefreshCw } from 'lucide-react'
 import { extractFileId, getGDriveUrl, getGDriveDownload, fetchSOPsFresh } from './src/lib.js'
 import companyLogo from './company logo.png'
 
 function PortalQRCard({ label, url, sub }) {
   const [copied, setCopied] = useState(false)
-  const svgRef = useRef(null)
+  const [showQuality, setShowQuality] = useState(false)
+  const qualityRef = useRef(null)
+
+  useEffect(() => {
+    if (!showQuality) return
+    const handler = (e) => {
+      if (qualityRef.current && !qualityRef.current.contains(e.target)) {
+        setShowQuality(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showQuality])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(url)
@@ -20,37 +33,33 @@ function PortalQRCard({ label, url, sub }) {
     }
   }
 
-  const downloadQRPNG = () => {
-    const svg = svgRef.current?.querySelector('svg')
-    if (!svg) return
-
-    const svgData = new XMLSerializer().serializeToString(svg)
+  const downloadQRPNG = async (quality) => {
+    setShowQuality(false)
     const canvas = document.createElement('canvas')
-    canvas.width = 1200
-    canvas.height = 1200
-    const ctx = canvas.getContext('2d')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    const img = new Image()
-    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
-
-    img.onload = () => {
-      ctx.drawImage(img, 50, 50, 1100, 1100)
-      URL.revokeObjectURL(blobUrl)
+    const size = quality === 'high' ? 2400 : 600
+    canvas.width = size
+    canvas.height = size
+    try {
+      await QRCode.toCanvas(canvas, url, {
+        width: size,
+        margin: quality === 'high' ? 4 : 2,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#FFFFFF' },
+      })
       const link = document.createElement('a')
-      link.download = 'document-portal-qr.png'
+      const suffix = quality === 'high' ? 'high' : 'standard'
+      link.download = `${label.toLowerCase().replace(/\s+/g, '-')}-qr-${suffix}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
+    } catch (err) {
+      console.error('QR download failed:', err)
     }
-    img.src = blobUrl
   }
 
   return (
     <div className="bg-surface rounded-xl border border-border p-4 shadow-sm hover:shadow-md hover:shadow-company-red/10 hover:border-company-red/20 transition-all">
       <div className="flex items-center gap-4 mb-3">
-        <div className="bg-surface-hover rounded-lg p-2 flex-shrink-0" ref={svgRef}>
+        <div className="bg-surface-hover rounded-lg p-2 flex-shrink-0">
           <QRCodeSVG value={url} size={72} level="H" fgColor="#000000" bgColor="#ffffff" />
         </div>
         <div className="min-w-0 flex-1">
@@ -73,13 +82,39 @@ function PortalQRCard({ label, url, sub }) {
             <Share2 size={14} /> Share
           </button>
         </div>
-        <button
-          onClick={downloadQRPNG}
-          className="inline-flex items-center gap-1 text-xs font-medium text-company-red hover:text-company-red/80 transition"
-          title="Download QR Code as PNG (printable)"
-        >
-          <Download size={14} /> QR PNG
-        </button>
+        <div className="relative" ref={qualityRef}>
+          <button
+            onClick={() => setShowQuality(!showQuality)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-company-red hover:text-company-red/80 transition"
+            title="Download QR Code as PNG"
+          >
+            <Download size={14} /> QR PNG
+          </button>
+          {showQuality && (
+            <div className="absolute bottom-full right-0 mb-1.5 bg-surface shadow-xl rounded-xl border border-border p-1.5 z-50 min-w-[180px]">
+              <button
+                onClick={() => downloadQRPNG('standard')}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-primary hover:bg-surface-hover rounded-lg transition text-left"
+              >
+                <Download size={14} className="text-muted" />
+                <div>
+                  <div className="font-medium">Standard</div>
+                  <div className="text-muted font-normal">600px — quick share</div>
+                </div>
+              </button>
+              <button
+                onClick={() => downloadQRPNG('high')}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-primary hover:bg-surface-hover rounded-lg transition text-left"
+              >
+                <Download size={14} className="text-company-red" />
+                <div>
+                  <div className="font-medium">High Quality</div>
+                  <div className="text-muted font-normal">2400px — for printing</div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
