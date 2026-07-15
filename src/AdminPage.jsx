@@ -1,10 +1,76 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { LogOut, ExternalLink, RefreshCw, Loader, Upload, Check, Clock, Trash2, GripVertical, ChevronDown } from 'lucide-react'
+import QRCode from 'qrcode'
+import { LogOut, ExternalLink, RefreshCw, Loader, Upload, Check, Clock, Trash2, GripVertical, ChevronDown, Share2, Download, Link, X } from 'lucide-react'
 import UploadModal from './UploadModal.jsx'
 import ConfirmDialog from './ConfirmDialog.jsx'
 import ShatterEffect from './ShatterEffect.jsx'
-import { SHEET_CSV_URL, SHEET_EDIT_URL, extractFileId, fetchSOPsFresh, syncApi, readFileAsBase64 } from './lib.js'
+import { SHEET_CSV_URL, SHEET_EDIT_URL, extractFileId, fetchSOPsFresh, syncApi, readFileAsBase64, getGDriveUrl } from './lib.js'
+
+function ShareModal({ sop, onClose }) {
+  const url = getGDriveUrl(sop.gdrivePath)
+  const [copied, setCopied] = useState(false)
+  const closeRef = useRef(null)
+
+  useEffect(() => {
+    closeRef.current?.focus()
+    const handleKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleNativeShare = () => {
+    if (navigator.share) {
+      navigator.share({ title: sop.title, text: sop.description, url })
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={onClose} role="dialog" aria-modal="true" aria-label="Share document">
+      <div className="bg-surface rounded-2xl shadow-2xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-lg text-primary">Share Document</h3>
+          <button ref={closeRef} onClick={onClose} className="p-1.5 hover:bg-border-light rounded-lg transition" aria-label="Tutup">
+            <X size={20} className="text-secondary" />
+          </button>
+        </div>
+
+        <p className="font-medium text-primary mb-1">{sop.title}</p>
+        <p className="text-sm text-secondary mb-4">{sop.description}</p>
+
+        <div className="flex items-center gap-3 bg-surface-hover rounded-xl px-4 py-3 mb-4">
+          <Link size={18} className="text-muted flex-shrink-0" />
+          <code className="text-xs text-secondary truncate flex-1">{url}</code>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopy}
+            className="flex-1 flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-medium py-2.5 rounded-xl transition-all text-sm"
+          >
+            {copied ? <Check size={16} /> : <Link size={16} />}
+            {copied ? 'Copied!' : 'Copy Link'}
+          </button>
+          {navigator.share && (
+            <button
+              onClick={handleNativeShare}
+              className="flex items-center gap-2 px-4 py-2.5 bg-border-light hover:bg-border rounded-xl transition text-sm font-medium"
+            >
+              <Share2 size={16} />
+              Share
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function AdminPage({ onLogout }) {
   const [sops, setSops] = useState([])
@@ -27,6 +93,8 @@ export default function AdminPage({ onLogout }) {
   const pendingDeleteRef = useRef(null)
   const [shatterTarget, setShatterTarget] = useState(null)
   const shatterTargetRef = useRef(null)
+  const [shareSop, setShareSop] = useState(null)
+  const [qrOptsId, setQrOptsId] = useState(null)
 
   useEffect(() => {
     mountedRef.current = true
@@ -170,6 +238,30 @@ export default function AdminPage({ onLogout }) {
   const cancelDelete = () => {
     setPendingDelete(null)
     pendingDeleteRef.current = null
+  }
+
+  const downloadQRPNG = async (sop, quality) => {
+    setQrOptsId(null)
+    const url = getQRValue(sop.gdrivePath)
+    const canvas = document.createElement('canvas')
+    const size = quality === 'high' ? 2400 : 600
+    canvas.width = size
+    canvas.height = size
+    try {
+      await QRCode.toCanvas(canvas, url, {
+        width: size,
+        margin: quality === 'high' ? 4 : 2,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#FFFFFF' },
+      })
+      const link = document.createElement('a')
+      const suffix = quality === 'high' ? 'high' : 'standard'
+      link.download = `${sop.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-qr-${suffix}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    } catch (err) {
+      console.error('QR download failed:', err)
+    }
   }
 
   const handleUpdateClick = (sop) => {
@@ -528,7 +620,56 @@ export default function AdminPage({ onLogout }) {
                             <Loader size={14} className="animate-spin text-muted" />
                           </div>
                         ) : (
-                          <QRCodeSVG value={getQRValue(sop.gdrivePath)} size={40} level="H" />
+                          <div className="flex items-center gap-2">
+                            <QRCodeSVG value={getQRValue(sop.gdrivePath)} size={40} level="H" />
+                            <div className="flex flex-col gap-0.5">
+                              <div className="relative">
+                                <button
+                                  onClick={() => setQrOptsId(qrOptsId === sop.id ? null : sop.id)}
+                                  className="p-1 text-muted hover:text-primary hover:bg-border-light rounded transition"
+                                  title="Download QR Code"
+                                  aria-label={`Download QR untuk ${sop.title}`}
+                                >
+                                  <Download size={14} />
+                                </button>
+                                {qrOptsId === sop.id && (
+                                  <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setQrOptsId(null)} />
+                                    <div className="absolute right-0 top-full mt-1 bg-surface shadow-xl rounded-xl border border-border p-1.5 z-50 min-w-[170px]">
+                                      <button
+                                        onClick={() => downloadQRPNG(sop, 'standard')}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-primary hover:bg-surface-hover rounded-lg transition text-left"
+                                      >
+                                        <Download size={14} className="text-muted" />
+                                        <div>
+                                          <div className="font-medium">Standard</div>
+                                          <div className="text-muted font-normal">600px</div>
+                                        </div>
+                                      </button>
+                                      <button
+                                        onClick={() => downloadQRPNG(sop, 'high')}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-primary hover:bg-surface-hover rounded-lg transition text-left"
+                                      >
+                                        <Download size={14} className="text-primary" />
+                                        <div>
+                                          <div className="font-medium">High Quality</div>
+                                          <div className="text-muted font-normal">2400px — for printing</div>
+                                        </div>
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => setShareSop(sop)}
+                                className="p-1 text-muted hover:text-primary hover:bg-border-light rounded transition"
+                                title="Share link"
+                                aria-label={`Bagikan link ${sop.title}`}
+                              >
+                                <Share2 size={14} />
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -600,6 +741,7 @@ export default function AdminPage({ onLogout }) {
         />
       )}
       {shatterTarget && <ShatterEffect targetSelector={shatterTarget} onComplete={handleShatterComplete} />}
+      {shareSop && <ShareModal sop={shareSop} onClose={() => setShareSop(null)} />}
     </div>
   )
 }

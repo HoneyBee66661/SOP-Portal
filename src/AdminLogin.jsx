@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Lock, ShieldAlert, Eye, EyeOff } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import QRCode from 'qrcode'
+import { Lock, ShieldAlert, Eye, EyeOff, Download } from 'lucide-react'
 import { setAdminToken } from './lib.js'
 
 const MAX_ATTEMPTS = 5
@@ -119,7 +121,66 @@ export default function AdminLogin({ onLogin }) {
             ← Back to Portal
           </a>
         </div>
+
+        {/* QR Code quick access */}
+        <div className="mt-6 pt-5 border-t border-border">
+          <p className="text-xs text-muted text-center mb-3">Scan untuk akses cepat</p>
+          <div className="grid grid-cols-2 gap-3">
+            <LoginQRCard
+              id="portal"
+              label="Document Portal"
+              sub="Open portal"
+              url={typeof window !== 'undefined' ? window.location.origin : ''}
+            />
+            <LoginQRCard
+              id="admin"
+              label="Admin Panel"
+              sub="Admin login page"
+              url={typeof window !== 'undefined' ? window.location.origin + '/admin' : ''}
+            />
+          </div>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function LoginQRCard({ label, sub, url }) {
+  const downloadQR = async (quality) => {
+    const canvas = document.createElement('canvas')
+    const size = quality === 'high' ? 2400 : 600
+    canvas.width = size
+    canvas.height = size
+    try {
+      await QRCode.toCanvas(canvas, url, {
+        width: size,
+        margin: quality === 'high' ? 4 : 2,
+        errorCorrectionLevel: 'H',
+        color: { dark: '#000000', light: '#FFFFFF' },
+      })
+      const link = document.createElement('a')
+      const suffix = quality === 'high' ? 'high' : 'standard'
+      link.download = `${label.toLowerCase().replace(/\s+/g, '-')}-qr-${suffix}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    } catch (err) {
+      console.error('QR download failed:', err)
+    }
+  }
+
+  return (
+    <div className="bg-surface-hover rounded-xl p-3 border border-border flex flex-col items-center text-center">
+      <QRCodeSVG value={url} size={56} level="H" fgColor="#000000" bgColor="#ffffff" />
+      <p className="text-xs font-semibold text-primary mt-2">{label}</p>
+      <p className="text-[10px] text-muted">{sub}</p>
+      <button
+        onClick={() => downloadQR('standard')}
+        className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:text-primary-hover transition"
+        title="Download QR"
+        aria-label={`Download QR ${label}`}
+      >
+        <Download size={10} /> Download QR
+      </button>
     </div>
   )
 }
